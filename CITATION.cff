@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+title: "quant-sens: Quantization Sensitivity Rank Stability Across Domains"
+type: software
+authors:
+  - family-names: "<YOUR FAMILY NAME>"
+    given-names: "<YOUR GIVEN NAME>"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+version: 0.1.0
+date-released: "2026-10-16"
+license: MIT
+repository-code: "<YOUR REPOSITORY URL>"
+keywords:
+  - post-training quantization
+  - mixed-precision
+  - bit allocation
+  - domain shift
+  - distribution shift
+  - automatic modulation classification
+  - edge deployment
+abstract: >-
+  Post-training quantization and mixed-precision search commonly assume that
+  layer-wise quantization sensitivity is an intrinsic property of the
+  architecture and weight distribution, so that a single representative
+  calibration set suffices to decide per-layer bit allocation. This work tests
+  that assumption for signal-classification models under distribution shift.
+  We define rho as the Spearman rank correlation between per-layer quantization
+  sensitivities measured in a source domain and in a shifted target domain,
+  and we complement it with an equal-reconstruction-error arm that quantifies
+  the cost of not knowing the deployment domain. On two architecturally
+  different backbones (CLDNN, 10 layers; 1D-ResNet, 16 layers) over five
+  target domains including a null-shift control, the cost of domain ignorance
+  is zero on the control and consistently positive under real shift, reaching
+  166 percent relative damage. We further show that rho is not a reliable
+  carrier for the conclusion: it depends strongly on the chosen reference
+  bit-width and on the backbone, with one domain pair flipping sign across
+  backbones.

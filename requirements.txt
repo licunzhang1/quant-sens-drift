@@ -1,0 +1,11 @@
+numpy>=1.24
+scipy>=1.10
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.13
+scikit-learn>=1.3
+pyyaml>=6.0
+tqdm>=4.66
+
+# 训练与模型部分需要（科学核心不需要）
+torch>=2.1

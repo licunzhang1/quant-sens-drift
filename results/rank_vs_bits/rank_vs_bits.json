@@ -1,0 +1,506 @@
+{
+  "n_permutations": 20000,
+  "seed": 42,
+  "rows": [
+    {
+      "backbone": "cldnn",
+      "shift": "D1_snr",
+      "ref_bits": 2,
+      "n_layers": 10,
+      "rho_loss": 0.6,
+      "p_loss": 0.07369631518424079,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.7454545454545455,
+      "p_acc": 0.018549072546372683,
+      "n_unique_acc_A": 10,
+      "n_unique_acc_B": 10,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.600 但不显著（p=0.074），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D1_snr",
+      "ref_bits": 3,
+      "n_layers": 10,
+      "rho_loss": 0.24848484848484848,
+      "p_loss": 0.49077546122693866,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.12422650291292123,
+      "p_acc": 0.7299635018249088,
+      "n_unique_acc_A": 7,
+      "n_unique_acc_B": 6,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.248 但不显著（p=0.491），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D1_snr",
+      "ref_bits": 4,
+      "n_layers": 10,
+      "rho_loss": 0.6727272727272727,
+      "p_loss": 0.037948102594870255,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.47833414937721225,
+      "p_acc": 0.1536423178841058,
+      "n_unique_acc_A": 5,
+      "n_unique_acc_B": 5,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.673（p=0.0379）：排序中度一致 → 部分可迁移"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D1_snr",
+      "ref_bits": 6,
+      "n_layers": 10,
+      "rho_loss": 0.7333333333333333,
+      "p_loss": 0.01929903504824759,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.7137464271463296,
+      "p_acc": 0.010999450027498626,
+      "n_unique_acc_A": 3,
+      "n_unique_acc_B": 6,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.733（p=0.0193）：排序中度一致 → 部分可迁移"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D1_snr",
+      "ref_bits": 8,
+      "n_layers": 10,
+      "rho_loss": -0.05454545454545454,
+      "p_loss": 0.8903054847257638,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": null,
+      "p_acc": null,
+      "n_unique_acc_A": 1,
+      "n_unique_acc_B": 2,
+      "significant_loss": false,
+      "verdict_loss": "ρ=-0.055 但不显著（p=0.890），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D2_cfo",
+      "ref_bits": 2,
+      "n_layers": 10,
+      "rho_loss": 0.16363636363636364,
+      "p_loss": 0.6550172491375431,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.7818181818181819,
+      "p_acc": 0.010699465026748662,
+      "n_unique_acc_A": 10,
+      "n_unique_acc_B": 10,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.164 但不显著（p=0.655），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D2_cfo",
+      "ref_bits": 3,
+      "n_layers": 10,
+      "rho_loss": 0.22424242424242424,
+      "p_loss": 0.5371731413429328,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.1419861295183785,
+      "p_acc": 0.6929653517324134,
+      "n_unique_acc_A": 7,
+      "n_unique_acc_B": 9,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.224 但不显著（p=0.537），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D2_cfo",
+      "ref_bits": 4,
+      "n_layers": 10,
+      "rho_loss": -0.3939393939393939,
+      "p_loss": 0.25708714564271784,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": -0.4353944532306056,
+      "p_acc": 0.2064396780160992,
+      "n_unique_acc_A": 5,
+      "n_unique_acc_B": 7,
+      "significant_loss": false,
+      "verdict_loss": "ρ=-0.394 但不显著（p=0.257），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D2_cfo",
+      "ref_bits": 6,
+      "n_layers": 10,
+      "rho_loss": -0.28484848484848485,
+      "p_loss": 0.4287785610719464,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": -0.6805555555555556,
+      "p_acc": 0.06449677516124194,
+      "n_unique_acc_A": 3,
+      "n_unique_acc_B": 5,
+      "significant_loss": false,
+      "verdict_loss": "ρ=-0.285 但不显著（p=0.429），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D2_cfo",
+      "ref_bits": 8,
+      "n_layers": 10,
+      "rho_loss": -0.030303030303030304,
+      "p_loss": 0.9430028498575072,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": null,
+      "p_acc": null,
+      "n_unique_acc_A": 1,
+      "n_unique_acc_B": 2,
+      "significant_loss": false,
+      "verdict_loss": "ρ=-0.030 但不显著（p=0.943），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D3_gain",
+      "ref_bits": 2,
+      "n_layers": 10,
+      "rho_loss": 0.9878787878787879,
+      "p_loss": 4.999750012499375e-05,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.9878787878787879,
+      "p_acc": 4.999750012499375e-05,
+      "n_unique_acc_A": 10,
+      "n_unique_acc_B": 10,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.988（p=5e-05）：排序高度一致 → 敏感性近似为架构内在属性"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D3_gain",
+      "ref_bits": 3,
+      "n_layers": 10,
+      "rho_loss": 0.9757575757575757,
+      "p_loss": 9.99950002499875e-05,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.8142766088409524,
+      "p_acc": 0.006999650017499125,
+      "n_unique_acc_A": 7,
+      "n_unique_acc_B": 8,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.976（p=0.0001）：排序高度一致 → 敏感性近似为架构内在属性"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D3_gain",
+      "ref_bits": 4,
+      "n_layers": 10,
+      "rho_loss": 1.0,
+      "p_loss": 4.999750012499375e-05,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.8921830339329121,
+      "p_acc": 0.0005499725013749313,
+      "n_unique_acc_A": 5,
+      "n_unique_acc_B": 6,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+1.000（p=5e-05）：排序高度一致 → 敏感性近似为架构内在属性"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D3_gain",
+      "ref_bits": 6,
+      "n_layers": 10,
+      "rho_loss": 0.9878787878787879,
+      "p_loss": 4.999750012499375e-05,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.5289624982012536,
+      "p_acc": 0.13149342532873357,
+      "n_unique_acc_A": 3,
+      "n_unique_acc_B": 5,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.988（p=5e-05）：排序高度一致 → 敏感性近似为架构内在属性"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D3_gain",
+      "ref_bits": 8,
+      "n_layers": 10,
+      "rho_loss": 0.9515151515151515,
+      "p_loss": 0.00014999250037498125,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": null,
+      "p_acc": null,
+      "n_unique_acc_A": 1,
+      "n_unique_acc_B": 2,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.952（p=0.00015）：排序高度一致 → 敏感性近似为架构内在属性"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D4_phasenoise",
+      "ref_bits": 2,
+      "n_layers": 10,
+      "rho_loss": 0.3575757575757576,
+      "p_loss": 0.31243437828108594,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.6564911374796383,
+      "p_acc": 0.04704764761761912,
+      "n_unique_acc_A": 10,
+      "n_unique_acc_B": 8,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.358 但不显著（p=0.312），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D4_phasenoise",
+      "ref_bits": 3,
+      "n_layers": 10,
+      "rho_loss": 0.2727272727272727,
+      "p_loss": 0.45177741112944353,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": -0.2,
+      "p_acc": 0.5821708914554272,
+      "n_unique_acc_A": 7,
+      "n_unique_acc_B": 7,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.273 但不显著（p=0.452），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D4_phasenoise",
+      "ref_bits": 4,
+      "n_layers": 10,
+      "rho_loss": 0.1393939393939394,
+      "p_loss": 0.7025648717564121,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": -0.6192793751163076,
+      "p_acc": 0.06264686765661717,
+      "n_unique_acc_A": 5,
+      "n_unique_acc_B": 7,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.139 但不显著（p=0.703），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D4_phasenoise",
+      "ref_bits": 6,
+      "n_layers": 10,
+      "rho_loss": -0.06666666666666667,
+      "p_loss": 0.8669566521673916,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": -0.20833333333333334,
+      "p_acc": 0.5554222288885555,
+      "n_unique_acc_A": 3,
+      "n_unique_acc_B": 5,
+      "significant_loss": false,
+      "verdict_loss": "ρ=-0.067 但不显著（p=0.867），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D4_phasenoise",
+      "ref_bits": 8,
+      "n_layers": 10,
+      "rho_loss": -0.09090909090909091,
+      "p_loss": 0.8099595020248987,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": null,
+      "p_acc": null,
+      "n_unique_acc_A": 1,
+      "n_unique_acc_B": 2,
+      "significant_loss": false,
+      "verdict_loss": "ρ=-0.091 但不显著（p=0.810），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D5_iqimb",
+      "ref_bits": 2,
+      "n_layers": 10,
+      "rho_loss": 0.8666666666666667,
+      "p_loss": 0.0020998950052497373,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.9030303030303031,
+      "p_acc": 0.0005499725013749313,
+      "n_unique_acc_A": 10,
+      "n_unique_acc_B": 10,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.867（p=0.0021）：排序高度一致 → 敏感性近似为架构内在属性"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D5_iqimb",
+      "ref_bits": 3,
+      "n_layers": 10,
+      "rho_loss": 0.47878787878787876,
+      "p_loss": 0.16509174541272936,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.7963569872987316,
+      "p_acc": 0.007699615019249037,
+      "n_unique_acc_A": 7,
+      "n_unique_acc_B": 9,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.479 但不显著（p=0.165），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D5_iqimb",
+      "ref_bits": 4,
+      "n_layers": 10,
+      "rho_loss": 0.10303030303030303,
+      "p_loss": 0.7824608769561522,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.4013864859597432,
+      "p_acc": 0.2495875206239688,
+      "n_unique_acc_A": 5,
+      "n_unique_acc_B": 6,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.103 但不显著（p=0.782），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D5_iqimb",
+      "ref_bits": 6,
+      "n_layers": 10,
+      "rho_loss": 0.296969696969697,
+      "p_loss": 0.40707964601769914,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": 0.7453559924999299,
+      "p_acc": 0.09969501524923753,
+      "n_unique_acc_A": 3,
+      "n_unique_acc_B": 2,
+      "significant_loss": false,
+      "verdict_loss": "ρ=+0.297 但不显著（p=0.407），不能拒绝'两域敏感性排序独立'的原假设"
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D5_iqimb",
+      "ref_bits": 8,
+      "n_layers": 10,
+      "rho_loss": 0.8181818181818182,
+      "p_loss": 0.006099695015249237,
+      "ci_loss": [
+        null,
+        null
+      ],
+      "n_unique_loss_A": 10,
+      "n_unique_loss_B": 10,
+      "rho_acc": null,
+      "p_acc": null,
+      "n_unique_acc_A": 1,
+      "n_unique_acc_B": 1,
+      "significant_loss": true,
+      "verdict_loss": "ρ=+0.818（p=0.0061）：排序高度一致 → 敏感性近似为架构内在属性"
+    }
+  ]
+}

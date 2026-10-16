@@ -1,0 +1,78 @@
+# 快速验证配置：用来确认 torch 侧链路能跑通，不做科学结论。
+#   python scripts/train_baseline.py --config configs/smoke.yaml
+#   python scripts/run_sensitivity.py --config configs/smoke.yaml --shift D1_snr
+#   python scripts/run_equal_error.py --config configs/smoke.yaml --shift D1_snr
+#   python scripts/make_figures.py --shift D1_snr
+# 几十秒内跑完。
+
+seed: 42
+
+data:
+  source: synth
+  modulations: [bpsk, qpsk, 8psk, 16qam]
+  n_symbols: 64
+  sps: 4
+  rolloff: 0.35
+  n_train: 800
+  n_val: 400
+  n_test: 400
+  domain_a:
+    snr_db: [4, 12]
+    cfo: 0.0
+    phase_noise_deg: 0.0
+    iq_gain_db: 0.0
+    iq_phase_deg: 0.0
+    gain_db: 0.0
+  shifts:
+    D1_snr:      {snr_db: [-2, 6]}
+    D2_cfo:      {snr_db: [4, 12], cfo: 0.02}
+
+model:
+  name: cldnn
+  n_classes: 4
+  cldnn:
+    conv_channels: [32, 32, 64]
+    kernel_size: 8
+    dropout: 0.3
+    lstm_hidden: 32
+    fc_hidden: 64
+  resnet1d:
+    base_channels: 16
+    n_blocks: [1, 1]
+    dropout: 0.2
+
+train:
+  epochs: 6
+  batch_size: 128
+  lr: 0.002
+  weight_decay: 0.0001
+  optimizer: adam
+  scheduler: cosine
+  early_stop_patience: 4
+  device: cpu
+
+quant:
+  bits_ladder: [2, 4, 8]
+  reference_bits: 4
+  symmetric: true
+  per_channel_weights: true
+  per_channel_activations: false
+  include_activations: false
+
+sensitivity:
+  metric: loss
+  layer_filter: null
+  max_layers: 4          # 快速验证只扫前 4 层
+
+rank:
+  n_permutations: 2000
+  alpha: 0.05
+
+equal_error:
+  total_bit_budget: 0.6
+  weight_by_params: true
+
+output:
+  root: results-smoke
+  save_npz: true
+  save_csv: true

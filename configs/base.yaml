@@ -1,0 +1,118 @@
+# ============================================================================
+#  quant-sens 主配置
+#  改这里，不要改代码。所有实验脚本都从这里读参数。
+# ============================================================================
+
+seed: 42
+
+# ---------------------------------------------------------------- 数据
+data:
+  source: synth            # synth | rml2018  （外部数据集需自行实现 Dataset）
+  modulations: [bpsk, qpsk, 8psk, 16qam]
+  n_symbols: 128           # 每样本符号数
+  sps: 4                   # 每符号采样点（过采样率）
+  rolloff: 0.35            # 根升余弦滚降系数
+  n_train: 8000
+  n_val: 2000
+  n_test: 1200
+
+  # 参考域（Domain A）的信道损伤
+  #
+  # ⚠ 难度必须落在"源域不饱和、目标域不退化"的区间内，否则实验无意义：
+  #   · 源域饱和（loss≈0）→ 量化不再影响输出 → 敏感性 10 层里 7 层为 0 → ρ 是噪声
+  #   · 目标域退化到随机 → 敏感性排序本身就是噪声
+  #
+  # 实测（CLDNN，n_symbols=128/sps=4）：
+  #   源域 (4,12) dB → acc 0.9995 / loss 0.0013  ← 饱和，敏感性退化
+  #   源域 (-2,6) dB → acc 约 0.89                ← 可用
+  # 因此源域设在 (-2,6)。
+  domain_a:
+    snr_db: [-2, 6]
+    cfo: 0.0
+    phase_noise_deg: 0.0
+    iq_gain_db: 0.0
+    iq_phase_deg: 0.0
+    gain_db: 0.0
+
+  # 目标域（Domain B）—— 偏移在这里构造
+  # 实验时用哪个由 scripts/run_sensitivity.py --shift 指定
+  #
+  # ⚠ 关于 CFO：高阶累积量**不是 CFO 不变的**（见 docs/findings.md 发现 3）。
+  #   实测同一个 CFO=0.02：累积量特征目标域 acc 0.31，CLDNN 0.50。
+  #   → 这本身就印证了"偏移强度取决于表示"，适合作为对照臂。
+  #
+  # ⚠ D3_gain 是**无效偏移**：每个样本都做了功率归一化，整体增益被消掉了
+  #   （实测 acc 掉点 +0.0005）。保留它作为**阴性对照**——管线应当正确报告"无偏移"。
+  shifts:
+    D1_snr:        {snr_db: [-8, 0]}                       # SNR 区间偏移（默认目标域）
+    D2_cfo:        {snr_db: [-2, 6], cfo: 0.02}            # 载波频偏
+    D3_gain:       {snr_db: [-2, 6], gain_db: 6.0}         # 阴性对照：应无影响
+    D4_phasenoise: {snr_db: [-2, 6], phase_noise_deg: 3.0}
+    D5_iqimb:      {snr_db: [-2, 6], iq_gain_db: 1.5, iq_phase_deg: 5.0}  # IQ 失衡
+
+# ---------------------------------------------------------------- 模型
+# ⚠ 层数与秩分析的统计功效直接相关。
+#   实测：CLDNN 每 stage 单卷积 → 仅 5 个权重层，n=5 时 ρ 的 95% CI 会宽到 [−1,1]。
+#   因此这里用 convs_per_stage=2，得到 8 conv + 2 fc = 10 个权重层。
+#   ResNet1D 配置下有 16 个权重层。两个骨干都满足 ≥10 的要求。
+model:
+  name: cldnn              # cldnn | resnet1d
+  n_classes: 4
+  cldnn:
+    conv_channels: [64, 64, 128, 128]
+    convs_per_stage: 2     # 每 stage 双卷积（层数 8 conv + 2 fc = 10）
+    kernel_size: 8
+    dropout: 0.3
+    lstm_hidden: 64
+    fc_hidden: 128
+  resnet1d:
+    base_channels: 32
+    n_blocks: [2, 2, 2]    # 16 个权重层
+    dropout: 0.2
+
+# ---------------------------------------------------------------- 训练
+train:
+  epochs: 40
+  batch_size: 256
+  lr: 0.001
+  weight_decay: 0.0001
+  optimizer: adam
+  scheduler: cosine
+  early_stop_patience: 8
+  device: auto             # auto | cpu | cuda
+
+# ---------------------------------------------------------------- 量化
+quant:
+  bits_ladder: [2, 3, 4, 6, 8]   # 位宽阶梯
+  reference_bits: 4              # 计算敏感性时用的参考位宽
+  symmetric: true
+  per_channel_weights: true      # 权重默认 per-channel
+  per_channel_activations: false # 激活通常 per-tensor
+  include_activations: true      # false = 仅权重量化
+
+# ---------------------------------------------------------------- 敏感性分析
+sensitivity:
+  # ⚠ 主口径必须是 loss，不能是 acc。
+  #   准确率会饱和：同域 acc 已经 1.0 时，把某层量化到 2bit 仍可能是 1.0，
+  #   于是 Δacc ≡ 0 → 敏感性向量全 0 → 秩相关退化成 NaN。
+  #   （实测见 tests/smoke_pipeline.py 的 acc 口径对照。）
+  metric: loss             # loss | acc
+  # 为了控制实验规模，可只对部分层做敏感性分析（正则匹配模块名）
+  layer_filter: null       # null = 全部可量化层；或如 "conv|fc"
+  max_layers: null         # null = 不限；整数 = 只取前 N 层（调试用）
+
+# ---------------------------------------------------------------- 秩稳定性
+rank:
+  n_permutations: 10000    # 置换检验次数
+  alpha: 0.05
+
+# ---------------------------------------------------------------- 等重构误差臂
+equal_error:
+  total_bit_budget: 0.8    # 总比特预算 / (层数 × 最大位宽) 的归一化比例
+  weight_by_params: true   # 预算按参数量加权分配
+
+# ---------------------------------------------------------------- 输出
+output:
+  root: results
+  save_npz: true
+  save_csv: true
