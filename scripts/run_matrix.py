@@ -27,6 +27,20 @@ results/matrix/summary.json      完整结果
 
 from __future__ import annotations
 
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
+
 import argparse
 import json
 import pathlib
@@ -46,7 +60,7 @@ def run(cmd: List[str], log: pathlib.Path) -> int:
     with log.open("w", encoding="utf-8") as fh:
         proc = subprocess.run(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT)
     if proc.returncode != 0:
-        print(f"    ✗ 退出码 {proc.returncode}，日志 {log}")
+        print(f"    X 退出码 {proc.returncode}，日志 {log}")
         tail = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-12:]
         for line in tail:
             print(f"      | {line}")
@@ -237,7 +251,7 @@ def main() -> int:
     print(f"  已写入 {outdir / 'matrix.md'}")
     print(f"  已写入 {outdir / 'summary.json'}")
     if rc_all:
-        print("\n  ⚠ 有子步骤失败，详见 experiments/logs/")
+        print("\n  [!] 有子步骤失败，详见 experiments/logs/")
     return 0
 
 

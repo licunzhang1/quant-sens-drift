@@ -19,6 +19,20 @@
 
 from __future__ import annotations
 
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
+
 import argparse
 import pathlib
 import sys
@@ -97,8 +111,8 @@ def main() -> int:
     print(f"[run_sensitivity] backbone={name}  目标域={shift}  "
           f"层数={len(layer_names)}  位宽={ladder}  参考位宽={ref_bits}")
     if len(layer_names) < 8:
-        print(f"  ⚠ 只有 {len(layer_names)} 层。n<8 时 Spearman ρ 的 95% 置信区间"
-              "会宽到几乎没有信息量（实测 n=5 时为 [−1,1]）。")
+        print(f"  [!] 只有 {len(layer_names)} 层。n<8 时 Spearman ρ 的 95% 置信区间"
+              "会宽到几乎没有信息量（实测 n=5 时为 [-1,1]）。")
         print("    建议：加深骨干（CLDNN 用 convs_per_stage=2 得到 10 层，"
               "ResNet1D 得到 16 层），或放宽 sensitivity.layer_filter。")
 
@@ -153,7 +167,7 @@ def main() -> int:
     print(f"\n  === acc 口径（对照）===")
     print(f"  ρ={res_acc.rho:+.4f}  p={res_acc.p_value:.4g}")
     if int(np.unique(sa_a).size) < len(layer_names):
-        print(f"  ⚠ 源域 acc 敏感性只有 {int(np.unique(sa_a).size)} 个不同值 / "
+        print(f"  [!] 源域 acc 敏感性只有 {int(np.unique(sa_a).size)} 个不同值 / "
               f"{len(layer_names)} 层 —— 典型的度量饱和。")
 
     # ---------------------------------------------------------------- 落盘

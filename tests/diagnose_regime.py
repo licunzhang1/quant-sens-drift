@@ -18,6 +18,20 @@
 
 from __future__ import annotations
 
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
+
 import pathlib
 import sys
 
@@ -97,14 +111,14 @@ def main():
         r = build(n_sym, sa, sb, cfo, ep)
         ok_src = 0.85 <= r["accA"] <= 0.975 and r["dLoss2_max"] > 1e-3
         ok_tgt = 0.35 <= r["accB"] <= 0.75
-        verdict = ("✓ 可用" if (ok_src and ok_tgt)
+        verdict = ("OK 可用" if (ok_src and ok_tgt)
                    else ("源域饱和" if not ok_src else "目标域不合适"))
         print(f"{n_sym:>5} {str(sa):>10} {str(sb):>9} {ep:>4} "
               f"{r['accA']:>7.4f} {r['lossA']:>8.4f} {r['dLoss2_max']:>9.5f} "
               f"{r['dLoss2_spread']:>8.5f} {r['accB']:>7.4f}  {verdict}")
         rows.append((verdict, n_sym, sa, sb, cfo, ep, r))
 
-    good = [x for x in rows if x[0].startswith("✓")]
+    good = [x for x in rows if x[0].startswith("OK")]
     print("-" * 96)
     if good:
         print("可用配置：")

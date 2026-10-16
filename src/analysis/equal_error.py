@@ -2,12 +2,12 @@
 
 问题设定
 --------
-给每个层 ℓ 分配位宽 ``b_ℓ ∈ 位宽阶梯``，在**总量化误差预算固定**的前提下，
+给每个层 l 分配位宽 ``b_l ∈ 位宽阶梯``，在**总量化误差预算固定**的前提下，
 最小化预测损伤
 
-    D(b) = Σ_ℓ  s_ℓ · ε_ℓ(b_ℓ)
+    D(b) = Σ_l  s_l · ε_l(b_l)
 
-其中 ``s_ℓ`` 是第 ℓ 层的敏感性，``ε_ℓ(b)`` 是第 ℓ 层在 b bit 下的重构误差（NMSE）。
+其中 ``s_l`` 是第 l 层的敏感性，``ε_l(b)`` 是第 l 层在 b bit 下的重构误差（NMSE）。
 
 三条臂
 ------
@@ -17,8 +17,8 @@
 
 两个关键差值
 ------------
-* ``agnostic − uniform``：敏感性引导的分配到底有没有用？
-* ``oracle − agnostic``：**"不知道部署域"的代价** ← 这是本项目的核心量
+* ``agnostic - uniform``：敏感性引导的分配到底有没有用？
+* ``oracle - agnostic``：**"不知道部署域"的代价** ← 这是本项目的核心量
 
 若后者的代价不可忽略，就得到干净的反例：
 
@@ -50,7 +50,7 @@ def predicted_damage(
     err_curves: np.ndarray,
     bits_ladder: Sequence[int],
 ) -> float:
-    """``D = Σ_ℓ s_ℓ · ε_ℓ(b_ℓ)``。"""
+    """``D = Σ_l s_l · ε_l(b_l)``。"""
     bits = np.asarray(bits, dtype=int)
     sensitivity = np.asarray(sensitivity, dtype=np.float64)
     err_curves = np.asarray(err_curves, dtype=np.float64)
@@ -148,9 +148,9 @@ def greedy_allocate(
 
     Parameters
     ----------
-    sensitivity : (n_layers,)   s_ℓ，越大越敏感
-    err_curves  : (n_layers, n_bits)  ε_ℓ(b)，按 bits_ladder 排列，随位宽单调下降
-    budget_ratio: 总预算 = ratio × Σ_ℓ costs_ℓ × max(bits_ladder)
+    sensitivity : (n_layers,)   s_l，越大越敏感
+    err_curves  : (n_layers, n_bits)  ε_l(b)，按 bits_ladder 排列，随位宽单调下降
+    budget_ratio: 总预算 = ratio × Σ_l costs_l × max(bits_ladder)
     layer_costs : 每层的预算权重（默认参数量；None 表示全 1）
     min_bits    : 起始位宽，默认取 ladder 最小值
     """
@@ -228,12 +228,12 @@ class EqualErrorArmResult:
     # 两个关键差值（都用**目标域**敏感性算预测损伤）
     @property
     def gain_from_sensitivity(self) -> float:
-        """uniform − agnostic：敏感性引导分配带来的收益（>0 说明有用）。"""
+        """uniform - agnostic：敏感性引导分配带来的收益（>0 说明有用）。"""
         return float(self.uniform.predicted_damage - self.agnostic.predicted_damage)
 
     @property
     def cost_of_domain_ignorance(self) -> float:
-        """agnostic − oracle：**不知道部署域的代价**（>=0）。"""
+        """agnostic - oracle：**不知道部署域的代价**（>=0）。"""
         return float(self.agnostic.predicted_damage - self.oracle.predicted_damage)
 
     @property

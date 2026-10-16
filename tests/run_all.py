@@ -8,6 +8,20 @@
 
 from __future__ import annotations
 
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
+
 import argparse
 import pathlib
 import subprocess

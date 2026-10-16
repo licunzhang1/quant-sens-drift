@@ -47,7 +47,7 @@ QPSK/8PSK/16QAM 全在 0.33。
     CFO=0.005 → 目标域 acc 0.3300
     CFO=0.020 → 目标域 acc 0.3137   ← 掉到随机水平
 
-原因是高阶累积量**不是 CFO 不变的**：``E[z⁴]`` 在 CFO 下带上 ``exp(j8πfk)``
+原因是高阶累积量**不是 CFO 不变的**：``E[z^4]`` 在 CFO 下带上 ``exp(j8πfk)``
 的相位，L=512、f=0.02 时相位转过 82 圈，累积量直接抵消归零。
 
 这不是 bug，而是一个值得写进报告的现象：**"域偏移的强度"不是绝对量，
@@ -60,6 +60,20 @@ CNN 可能只是轻微退化。本项目的因子分解协议正好能刻画这�
 """
 
 from __future__ import annotations
+
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
 
 import argparse
 import pathlib
@@ -186,11 +200,11 @@ def main() -> int:
     print(f"  同域泛化间隙 = {acc_a_tr - acc_a:+.4f}   （应接近 0）")
     print(f"  跨域掉点     = {acc_a - acc_b:+.4f}    loss 上升 = {loss_b - loss_a:+.4f}")
     if acc_a_tr - acc_a > 0.05:
-        print("  ⚠ 同域间隙偏大：域间隙会与泛化失败混淆。")
+        print("  [!] 同域间隙偏大：域间隙会与泛化失败混淆。")
     if acc_b < 0.30:
-        print("  ⚠ 目标域接近随机水平：敏感性排序本身就是噪声，应减弱偏移。")
+        print("  [!] 目标域接近随机水平：敏感性排序本身就是噪声，应减弱偏移。")
     if acc_a > 0.999:
-        print("  ⚠ 源域准确率饱和到 1.0：Δacc 口径会退化成全 0（见下方对比）。")
+        print("  [!] 源域准确率饱和到 1.0：Δacc 口径会退化成全 0（见下方对比）。")
 
     # ------------------------------------------------------------------ 敏感性
     banner("步骤 5/6  逐层敏感性矩阵（loss 口径 + acc 口径）")
@@ -255,7 +269,7 @@ def main() -> int:
     curves = {n: quant_error_curve(model.params[n], BITS_LADDER, True, 0)
               for n in layer_names}
     err = np.array([[curves[n][b]["nmse"] for b in BITS_LADDER] for n in layer_names])
-    print_matrix("逐层 NMSE ε_ℓ(b)", layer_names, BITS_LADDER, err)
+    print_matrix("逐层 NMSE ε_l(b)", layer_names, BITS_LADDER, err)
 
     costs = model.layer_costs()
     arm = run_equal_error_arm(sa, sb, err, BITS_LADDER, budget_ratio=0.6,
@@ -268,8 +282,8 @@ def main() -> int:
                        ("oracle (目标域B)", arm.oracle)):
         print("    {:<20s}{:<26s}{:>16.8f}".format(
             tag, str(alloc.bits.tolist()), alloc.predicted_damage))
-    print(f"\n  敏感性引导的收益 (uniform − agnostic) = {arm.gain_from_sensitivity:+.8f}")
-    print(f"  **不知道部署域的代价** (agnostic − oracle) = {arm.cost_of_domain_ignorance:+.8f}")
+    print(f"\n  敏感性引导的收益 (uniform - agnostic) = {arm.gain_from_sensitivity:+.8f}")
+    print(f"  **不知道部署域的代价** (agnostic - oracle) = {arm.cost_of_domain_ignorance:+.8f}")
     print(f"  相对代价 = {arm.relative_cost_of_ignorance:+.1%}")
     print(f"  排序是否改变决策: {arm.ranking_flipped}")
     print(f"  结论: {arm.verdict()}")

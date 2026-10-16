@@ -20,6 +20,20 @@
 
 from __future__ import annotations
 
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
+
 import argparse
 import json
 import os
@@ -306,7 +320,7 @@ def render(p: Progress, show_log: bool, pad: bool) -> str:
                    + f" {rho_s:>9} {p_s:>8} {drop_s:>8}")
 
     out.append("")
-    out.append(C.w(DIM, "  * 表示 ρ 的置换检验 p < 0.05；Δacc = 源域准确率 − 目标域准确率"))
+    out.append(C.w(DIM, "  * 表示 ρ 的置换检验 p < 0.05；Δacc = 源域准确率 - 目标域准确率"))
 
     if show_log:
         log, tail = p.active_log()
@@ -338,7 +352,7 @@ def render(p: Progress, show_log: bool, pad: bool) -> str:
                          ) if r else f"{'-':>13}"
             out.append(line)
         out.append("")
-        out.append(C.w(BOLD, "  等误差臂：域无知代价 (agnostic − oracle)"))
+        out.append(C.w(BOLD, "  等误差臂：域无知代价 (agnostic - oracle)"))
         line = "  " + f"{'':<10}"
         for s in p.shifts:
             line += f"{s[:11]:>13}"
@@ -379,7 +393,7 @@ def main() -> int:
     shifts = (args.shifts.split(",") if args.shifts
               else read_shifts(root / args.config))
     if not shifts:
-        print(f"⚠ 没能从 {root / args.config} 读到 shifts，"
+        print(f"[!] 没能从 {root / args.config} 读到 shifts，"
               f"用 --shifts D1_snr,D2_cfo 手动指定。")
         return 2
 

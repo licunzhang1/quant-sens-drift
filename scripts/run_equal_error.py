@@ -3,20 +3,34 @@
     python scripts/run_equal_error.py --config configs/base.yaml --shift D1_snr
 
 读取 ``results/sensitivity/sens_<backbone>_<shift>.npz``（由 run_sensitivity.py 产出）
-与骨干权重，计算逐层重构误差曲线 ε_ℓ(b)，跑三臂：
+与骨干权重，计算逐层重构误差曲线 ε_l(b)，跑三臂：
 
     uniform   所有层同位宽
     agnostic  用**源域**敏感性分配       ← 现实中你能做的（你只知道训练域）
     oracle    用**目标域**敏感性分配     ← 不可实现，是上界
 
 两个关键差值：
-    agnostic − uniform   敏感性引导到底有没有用
-    oracle  − agnostic   **"不知道部署域"的代价** ← 本项目的核心量
+    agnostic - uniform   敏感性引导到底有没有用
+    oracle  - agnostic   **"不知道部署域"的代价** ← 本项目的核心量
 
 若后者不可忽略，就得到干净的反例：**不存在域无关的最优比特分配**。
 """
 
 from __future__ import annotations
+
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
 
 import argparse
 import pathlib
@@ -94,7 +108,7 @@ def main() -> int:
         for j, b in enumerate(ladder):
             err[i, j] = curve[b]["nmse"]
 
-    print("\n  逐层 NMSE ε_ℓ(b)")
+    print("\n  逐层 NMSE ε_l(b)")
     print("    {:<34s}".format("layer") + "".join(f"{b:>10d}b" for b in ladder))
     for i, nm in enumerate(layer_names):
         print("    {:<34s}".format(nm[:32])
@@ -118,8 +132,8 @@ def main() -> int:
                         ("oracle(目标)", arm.oracle)):
             print("    {:<20s}{:<30s}{:>16.8f}".format(
                 tag2, str(a.bits.tolist()), a.predicted_damage))
-        print(f"    敏感性引导收益 (uniform−agnostic) = {arm.gain_from_sensitivity:+.8f}")
-        print(f"    **域无知代价**  (agnostic−oracle)  = {arm.cost_of_domain_ignorance:+.8f}"
+        print(f"    敏感性引导收益 (uniform-agnostic) = {arm.gain_from_sensitivity:+.8f}")
+        print(f"    **域无知代价**  (agnostic-oracle)  = {arm.cost_of_domain_ignorance:+.8f}"
               f"   相对 {arm.relative_cost_of_ignorance:+.1%}")
         print(f"    排序改变决策: {arm.ranking_flipped}")
         print(f"    结论: {arm.verdict()}")

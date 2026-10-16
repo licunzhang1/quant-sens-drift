@@ -2,13 +2,13 @@
 
 核心量
 ------
-``Δ_ℓ(b) = M(量化第 ℓ 层到 b bit) − M(全浮点)``
+``Δ_l(b) = M(量化第 l 层到 b bit) - M(全浮点)``
 
 其中 M 是评价指标（准确率或损失）。
 
 设计上是**框架无关**的：只依赖两个回调
   * ``evaluate()``             -> float，全浮点下的指标
-  * ``quantize_layer(name, b)`` -> context manager，临时把第 ℓ 层量化
+  * ``quantize_layer(name, b)`` -> context manager，临时把第 l 层量化
 
 这样 numpy 冒烟测试和 torch 真实训练可以共用同一套逻辑。
 """

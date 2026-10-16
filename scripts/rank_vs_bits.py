@@ -21,6 +21,20 @@
 
 from __future__ import annotations
 
+# --- console safety --------------------------------------------------------
+# Chinese Windows consoles default to GBK. A character outside GBK raises
+# UnicodeEncodeError on print and aborts the whole script. Setting
+# errors="replace" degrades such a character to "?" instead of crashing.
+import sys as _console_sys
+
+for _stream in (_console_sys.stdout, _console_sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")
+    except Exception:
+        pass
+del _console_sys, _stream
+# --- end console safety ----------------------------------------------------
+
 import argparse
 import json
 import pathlib
@@ -142,7 +156,7 @@ def main() -> int:
         "n_permutations": args.n_permutations, "seed": args.seed, "rows": rows,
     })
     print(f"\n  已写入 {out}")
-    print("\n  ⚠ 读法：若不同参考位宽给出的 ρ 差异很大（例如 4b 是 +0.14、2b 是 +0.7），")
+    print("\n  [!] 读法：若不同参考位宽给出的 ρ 差异很大（例如 4b 是 +0.14、2b 是 +0.7），")
     print("    说明**参考位宽本身是一个需要论证的设计选择**，")
     print("    必须在报告里说明为什么选它，并给出对位宽的敏感性分析。")
     return 0
