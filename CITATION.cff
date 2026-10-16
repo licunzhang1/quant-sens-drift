@@ -3,13 +3,12 @@ message: "If you use this code, please cite it as below."
 title: "quant-sens: Quantization Sensitivity Rank Stability Across Domains"
 type: software
 authors:
-  - family-names: "<YOUR FAMILY NAME>"
-    given-names: "<YOUR GIVEN NAME>"
+  - name: "licunzhang1"
     # orcid: "https://orcid.org/0000-0000-0000-0000"
 version: 0.1.0
 date-released: "2026-10-16"
 license: MIT
-repository-code: "<YOUR REPOSITORY URL>"
+repository-code: "https://github.com/licunzhang1/quant-sens-drift"
 keywords:
   - post-training quantization
   - mixed-precision
