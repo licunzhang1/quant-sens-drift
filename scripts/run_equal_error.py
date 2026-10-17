@@ -56,10 +56,15 @@ def main() -> int:
     ap.add_argument("--shift", default=None)
     ap.add_argument("--backbone", default=None)
     ap.add_argument("--sens", default=None, help="直接指定 sens_*.npz")
+    ap.add_argument("--ckpt", default=None, help="骨干权重路径（默认 results/baseline/<name>.pt）")
     ap.add_argument("--outdir", default="results/equal_error")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="覆盖 config 里的 seed（多种子实验用）")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if args.seed is not None:
+        cfg["seed"] = int(args.seed)
     if args.backbone:
         cfg["model"]["name"] = args.backbone
     name = cfg["model"]["name"]
@@ -84,7 +89,7 @@ def main() -> int:
           f"参考位宽={ref_bits}")
 
     # ---------------------------------------------------------------- 误差曲线
-    ckpt = pathlib.Path(f"results/baseline/{name}.pt")
+    ckpt = pathlib.Path(args.ckpt or f"results/baseline/{name}.pt")
     if not ckpt.exists():
         print(f"找不到权重 {ckpt}")
         return 2

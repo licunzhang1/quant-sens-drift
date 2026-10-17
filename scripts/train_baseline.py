@@ -62,11 +62,15 @@ def main() -> int:
     ap.add_argument("--config", default="configs/base.yaml")
     ap.add_argument("--backbone", default=None, help="覆盖 config 里的 model.name")
     ap.add_argument("--outdir", default="results/baseline")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="覆盖 config 里的 seed（多种子实验用）")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     if args.backbone:
         cfg["model"]["name"] = args.backbone
+    if args.seed is not None:
+        cfg["seed"] = int(args.seed)
     seed = int(cfg.get("seed", 42))
     seed_everything(seed)
 

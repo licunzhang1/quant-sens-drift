@@ -1,0 +1,520 @@
+{
+  "budget_ratio": 0.6,
+  "seeds": [
+    42,
+    43,
+    44
+  ],
+  "rows": [
+    {
+      "backbone": "cldnn",
+      "shift": "D1_snr",
+      "n_seeds": 3,
+      "n_layers": 10,
+      "rho_mean": 0.7777666666666667,
+      "rho_std": 0.09415356251004707,
+      "rho_min": 0.6727,
+      "rho_max": 0.8545,
+      "n_significant": 3,
+      "fisher_p": 8.979232335081796e-05,
+      "cost_mean": 0.0068860101963447275,
+      "cost_std": 0.007023144052280565,
+      "rel_cost_mean": 0.07340677577791821,
+      "rel_cost_std": 0.07039496559550462,
+      "n_cost_positive": 2,
+      "n_flipped": 2,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 0.6727,
+          "p_loss": 0.036796,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.006619338750536309,
+          "rel_cost": 0.14034317763522175,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": 0.8061,
+          "p_loss": 0.005499,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.014038691838497874,
+          "rel_cost": 0.07987714969853289,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": 0.8545,
+          "p_loss": 0.0039,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.0,
+          "rel_cost": 0.0,
+          "flipped": false
+        }
+      ]
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D2_cfo",
+      "n_seeds": 3,
+      "n_layers": 10,
+      "rho_mean": -0.5757666666666666,
+      "rho_std": 0.21853801347439156,
+      "rho_min": -0.8182,
+      "rho_max": -0.3939,
+      "n_significant": 1,
+      "fisher_p": 0.0102847219759402,
+      "cost_mean": 0.12399508023778137,
+      "cost_std": 0.04883871454401574,
+      "rel_cost_mean": 1.4743332143359573,
+      "rel_cost_std": 0.22860617585917636,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": -0.3939,
+          "p_loss": 0.258374,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.06783888347896755,
+          "rel_cost": 1.6326748666837683,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": -0.5152,
+          "p_loss": 0.128087,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.15655438520703613,
+          "rel_cost": 1.5780741824503928,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": -0.8182,
+          "p_loss": 0.006999,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.14759197202734042,
+          "rel_cost": 1.2122505938737107,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D3_gain",
+      "n_seeds": 3,
+      "n_layers": 10,
+      "rho_mean": 0.8020333333333334,
+      "rho_std": 0.27276495987082605,
+      "rho_min": 0.4909,
+      "rho_max": 1.0,
+      "n_significant": 2,
+      "fisher_p": 1.4461838402295718e-06,
+      "cost_mean": 0.003924897595298424,
+      "cost_std": 0.00568649158298397,
+      "rel_cost_mean": 2.860406088278933,
+      "rel_cost_std": 4.850169499892419,
+      "n_cost_positive": 2,
+      "n_flipped": 2,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 1.0,
+          "p_loss": 0.0001,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.0,
+          "rel_cost": 0.0,
+          "flipped": false
+        },
+        {
+          "seed": 43,
+          "rho_loss": 0.4909,
+          "p_loss": 0.148385,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.010446136876525822,
+          "rel_cost": 8.460465477100946,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": 0.9152,
+          "p_loss": 0.0005,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.0013285559093694516,
+          "rel_cost": 0.12075278773585238,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D4_phasenoise",
+      "n_seeds": 3,
+      "n_layers": 10,
+      "rho_mean": -0.19999999999999998,
+      "rho_std": 0.467545965654715,
+      "rho_min": -0.7333,
+      "rho_max": 0.1394,
+      "n_significant": 1,
+      "fisher_p": 0.2085264298839712,
+      "cost_mean": 0.0861391606586258,
+      "cost_std": 0.08212757991678861,
+      "rel_cost_mean": 1.4523868525795198,
+      "rel_cost_std": 0.23936167975027078,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 0.1394,
+          "p_loss": 0.70493,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.03035286838237077,
+          "rel_cost": 1.66272123470435,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": -0.7333,
+          "p_loss": 0.020998,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.18044658672614566,
+          "rel_cost": 1.5025052033585642,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": -0.0061,
+          "p_loss": 1.0,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.047618026867360976,
+          "rel_cost": 1.1919341196756454,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "cldnn",
+      "shift": "D5_iqimb",
+      "n_seeds": 3,
+      "n_layers": 10,
+      "rho_mean": -0.3050666666666667,
+      "rho_std": 0.4320197372034446,
+      "rho_min": -0.7576,
+      "rho_max": 0.103,
+      "n_significant": 1,
+      "fisher_p": 0.10305653039599916,
+      "cost_mean": 0.04169179418976535,
+      "cost_std": 0.031739470888532885,
+      "rel_cost_mean": 2.9056721191860575,
+      "rel_cost_std": 2.308447646729858,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 0.103,
+          "p_loss": 0.784622,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.019022520508550342,
+          "rel_cost": 0.9285460712616636,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": -0.7576,
+          "p_loss": 0.013799,
+          "significant": true,
+          "n_layers": 10,
+          "cost": 0.07796579821076971,
+          "rel_cost": 2.34595868829377,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": -0.2606,
+          "p_loss": 0.470953,
+          "significant": false,
+          "n_layers": 10,
+          "cost": 0.028087063849975995,
+          "rel_cost": 5.4425115980027385,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "resnet1d",
+      "shift": "D1_snr",
+      "n_seeds": 3,
+      "n_layers": 16,
+      "rho_mean": 0.3107666666666667,
+      "rho_std": 0.3489233487935901,
+      "rho_min": -0.0471,
+      "rho_max": 0.65,
+      "n_significant": 1,
+      "fisher_p": 0.037591575737216776,
+      "cost_mean": 0.03132490116944932,
+      "cost_std": 0.012263160331864408,
+      "rel_cost_mean": 0.7633612562960649,
+      "rel_cost_std": 0.20110299021760272,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 0.3294,
+          "p_loss": 0.213379,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.026947161054970893,
+          "rel_cost": 0.5439443252339988,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": -0.0471,
+          "p_loss": 0.863414,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.045176174278486116,
+          "rel_cost": 0.8072322670848343,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": 0.65,
+          "p_loss": 0.006799,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.02185136817489095,
+          "rel_cost": 0.9389071765693616,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "resnet1d",
+      "shift": "D2_cfo",
+      "n_seeds": 3,
+      "n_layers": 16,
+      "rho_mean": -0.3137333333333333,
+      "rho_std": 0.31575536944497606,
+      "rho_min": -0.6706,
+      "rho_max": -0.0706,
+      "n_significant": 1,
+      "fisher_p": 0.047887476541869874,
+      "cost_mean": 0.6628638146535417,
+      "cost_std": 0.209216236100263,
+      "rel_cost_mean": 1.1532073235804752,
+      "rel_cost_std": 0.09008780940264544,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": -0.2,
+          "p_loss": 0.455954,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.8031275076422979,
+          "rel_cost": 1.220314396199254,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": -0.0706,
+          "p_loss": 0.794321,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.422391116424097,
+          "rel_cost": 1.0508185201010454,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": -0.6706,
+          "p_loss": 0.0048,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.7630728198942303,
+          "rel_cost": 1.188489054441126,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "resnet1d",
+      "shift": "D3_gain",
+      "n_seeds": 3,
+      "n_layers": 16,
+      "rho_mean": 0.5902000000000001,
+      "rho_std": 0.2339870081863521,
+      "rho_min": 0.3618,
+      "rho_max": 0.8294,
+      "n_significant": 2,
+      "fisher_p": 8.33481228017968e-05,
+      "cost_mean": 0.0015267244226499638,
+      "cost_std": 0.001193932531306724,
+      "rel_cost_mean": 0.785547210908282,
+      "rel_cost_std": 0.7821564386195142,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 0.5794,
+          "p_loss": 0.020898,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.002712571911517956,
+          "rel_cost": 0.49988305622866025,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": 0.8294,
+          "p_loss": 0.0002,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.00032486785008827576,
+          "rel_cost": 0.18637815110452688,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": 0.3618,
+          "p_loss": 0.173283,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.0015427335063436594,
+          "rel_cost": 1.6703804253916585,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "resnet1d",
+      "shift": "D4_phasenoise",
+      "n_seeds": 3,
+      "n_layers": 16,
+      "rho_mean": -0.31176666666666664,
+      "rho_std": 0.3474074025309958,
+      "rho_min": -0.7059,
+      "rho_max": -0.05,
+      "n_significant": 1,
+      "fisher_p": 0.0383848105927718,
+      "cost_mean": 0.37852141974814835,
+      "cost_std": 0.14325880788677456,
+      "rel_cost_mean": 1.1361416629381837,
+      "rel_cost_std": 0.09826380161338896,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": -0.1794,
+          "p_loss": 0.50055,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.4725002758553492,
+          "rel_cost": 1.2027906042760141,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": -0.05,
+          "p_loss": 0.857914,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.21363768737611907,
+          "rel_cost": 1.0232922674253853,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": -0.7059,
+          "p_loss": 0.003,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.4494262960129767,
+          "rel_cost": 1.182342117113152,
+          "flipped": true
+        }
+      ]
+    },
+    {
+      "backbone": "resnet1d",
+      "shift": "D5_iqimb",
+      "n_seeds": 3,
+      "n_layers": 16,
+      "rho_mean": 0.04806666666666667,
+      "rho_std": 0.5795588350921184,
+      "rho_min": -0.5235,
+      "rho_max": 0.6353,
+      "n_significant": 2,
+      "fisher_p": 0.015606413257020618,
+      "cost_mean": 0.01088278605627028,
+      "cost_std": 0.012600786041363103,
+      "rel_cost_mean": 0.9871522286102686,
+      "rel_cost_std": 0.8255608524154188,
+      "n_cost_positive": 3,
+      "n_flipped": 3,
+      "n_flipped_total": 3,
+      "per_seed": [
+        {
+          "seed": 42,
+          "rho_loss": 0.6353,
+          "p_loss": 0.010299,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.0016126487059930222,
+          "rel_cost": 0.05872681082788559,
+          "flipped": true
+        },
+        {
+          "seed": 43,
+          "rho_loss": 0.0324,
+          "p_loss": 0.910109,
+          "significant": false,
+          "n_layers": 16,
+          "cost": 0.005805582907038611,
+          "rel_cost": 1.6386358742550806,
+          "flipped": true
+        },
+        {
+          "seed": 44,
+          "rho_loss": -0.5235,
+          "p_loss": 0.042096,
+          "significant": true,
+          "n_layers": 16,
+          "cost": 0.025230126555779206,
+          "rel_cost": 1.2640940007478396,
+          "flipped": true
+        }
+      ]
+    }
+  ]
+}

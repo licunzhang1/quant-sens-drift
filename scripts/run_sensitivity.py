@@ -67,11 +67,15 @@ def main() -> int:
     ap.add_argument("--backbone", default=None)
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--outdir", default="results/sensitivity")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="覆盖 config 里的 seed（多种子实验用）")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
     if args.backbone:
         cfg["model"]["name"] = args.backbone
+    if args.seed is not None:
+        cfg["seed"] = int(args.seed)
     seed = int(cfg.get("seed", 42))
     seed_everything(seed)
 
