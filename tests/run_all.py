@@ -1,9 +1,9 @@
-"""一键跑完全部验证。
+"""Run every verification in one go.
 
-    python tests/run_all.py            # 单元测试 + 冒烟测试
-    python tests/run_all.py --quick    # 只跑单元测试（几秒）
+    python tests/run_all.py            # unit tests + smoke test
+    python tests/run_all.py --quick    # unit tests only (a few seconds)
 
-退出码 0 表示全部通过。**每次改完核心代码都应该跑一遍这个。**
+Exit code 0 means everything passed. **Run this after every change to core code.**
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def run(script: pathlib.Path, extra: list[str] | None = None) -> tuple[int, floa
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--quick", action="store_true", help="只跑单元测试")
+    ap.add_argument("--quick", action="store_true", help="run the unit tests only")
     args = ap.parse_args()
 
     plan = [("test_quant_core.py", None)]
@@ -54,7 +54,7 @@ def main() -> int:
         results.append((name, rc, dt))
 
     print(f"\n{'=' * 78}")
-    print("  汇总")
+    print("  summary")
     print(f"{'=' * 78}")
     bad = 0
     for name, rc, dt in results:
@@ -64,15 +64,17 @@ def main() -> int:
         print(f"  [{mark}] {name:<24s} {dt:>7.1f}s  (exit={rc})")
     print()
     if bad:
-        print(f"  {bad} 个脚本失败")
+        print(f"  {bad} scripts failed")
     else:
-        print("  全部通过")
+        print("  all passed")
         print()
-        print("  本脚本覆盖的是**不依赖 torch 的科学核心**（量化数学、秩相关、")
-        print("  等误差臂、端到端管线）。torch 侧另有一套验证：")
+        print("  This script covers the **torch-independent scientific core**"
+              " (quantization math, rank correlation,")
+        print("  equal-error arms, end-to-end pipeline). The torch side has its own"
+              " verification:")
         print("    python scripts/train_baseline.py --config configs/base.yaml")
         print("    python scripts/run_matrix.py --skip-existing")
-        print("  实测结果见 docs/findings.md。")
+        print("  Measured results are in docs/findings.md.")
     return 1 if bad else 0
 
 

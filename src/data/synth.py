@@ -1,14 +1,17 @@
-"""合成 IQ 信号生成 —— 零下载、完全可控的偏移构造。
+"""Synthetic IQ signal generation -- zero downloads, fully controllable shifts.
 
-为什么默认用合成数据
---------------------
-本项目要研究的是**分布偏移下的量化敏感性**，因此必须能**精确控制偏移的种类与强度**。
-公开数据集（RML2018.01A 等）通常只给一个固定信道条件，无法做受控偏移实验。
-合成数据的另一个好处是：零下载、可复现、可无限扩样。
+Why synthetic data by default
+-----------------------------
+This project studies **quantization sensitivity under distribution shift**, so
+the kind and strength of the shift must be **controlled exactly**. Public
+datasets (RML2018.01A and friends) usually provide a single fixed channel
+condition and cannot support controlled shift experiments. Synthetic data has
+two further advantages: zero downloads, reproducible, and unlimited sampling.
 
-若要接入公开数据集，实现一个新的 ``Dataset`` 即可，本模块不必改动。
+To plug in a public dataset, implement a new ``Dataset``; this module does not
+need to change.
 
-输出的样本格式与 RadioML 一致：``X: (N, 2, L)``，通道 0=I、1=Q。
+The sample format matches RadioML: ``X: (N, 2, L)`` with channel 0=I and 1=Q.
 """
 
 from __future__ import annotations
@@ -30,16 +33,16 @@ __all__ = [
 
 
 # --------------------------------------------------------------------------
-# 星座图
+# constellations
 # --------------------------------------------------------------------------
 def _pam_levels(m: int) -> np.ndarray:
-    """m-PAM 的归一化电平（单位平均能量）。"""
+    """Normalized m-PAM levels (unit average energy)."""
     levels = np.arange(-(m - 1), m, 2, dtype=np.float64)
     return levels / np.sqrt(np.mean(levels ** 2))
 
 
 def make_constellation(name: str) -> np.ndarray:
-    """返回单位平均能量的复星座点。"""
+    """Return complex constellation points with unit average energy."""
     name = name.lower()
     if name == "bpsk":
         pts = np.array([-1.0, 1.0], dtype=np.complex128)
@@ -52,13 +55,13 @@ def make_constellation(name: str) -> np.ndarray:
         lv = _pam_levels(4)
         pts = np.array([a + 1j * b for a in lv for b in lv], dtype=np.complex128)
     elif name == "8qam":
-        lv = _pam_levels(4)[1::2]  # ±1/sqrt(2) 量级
+        lv = _pam_levels(4)[1::2]  # magnitude of order 1/sqrt(2)
         outer = np.array([a + 1j * b for a in lv for b in lv], dtype=np.complex128)
         lv2 = _pam_levels(2)
         inner = np.array([a + 1j * b for a in lv2 for b in lv2], dtype=np.complex128)
         pts = np.concatenate([outer, inner])
     else:
-        raise ValueError(f"未知调制方式: {name}")
+        raise ValueError(f"unknown modulation: {name}")
     pts = pts.astype(np.complex128)
     return pts / np.sqrt(np.mean(np.abs(pts) ** 2))
 
@@ -67,12 +70,12 @@ MODULATIONS: Tuple[str, ...] = ("bpsk", "qpsk", "8psk", "8qam", "16qam")
 
 
 # --------------------------------------------------------------------------
-# 脉冲成形
+# pulse shaping
 # --------------------------------------------------------------------------
 def rrc_filter(beta: float, sps: int, span: int = 6) -> np.ndarray:
-    """根升余弦滤波器（单位能量）。"""
+    """Root-raised-cosine filter (unit energy)."""
     if sps < 1:
-        raise ValueError("sps 必须 >= 1")
+        raise ValueError("sps must be >= 1")
     n = span * sps
     t = np.arange(-n / 2, n / 2 + 1, dtype=np.float64) / sps
     h = np.zeros_like(t)
@@ -92,12 +95,12 @@ def rrc_filter(beta: float, sps: int, span: int = 6) -> np.ndarray:
             h[i] = num / den
     e = np.sum(h ** 2)
     if e < 1e-12:
-        raise ValueError("RRC 滤波器能量异常")
+        raise ValueError("degenerate RRC filter energy")
     return h / np.sqrt(e)
 
 
 def pulse_shape(symbols: np.ndarray, sps: int, beta: float, span: int = 6) -> np.ndarray:
-    """上采样 + RRC 成形。"""
+    """Upsample, then apply RRC pulse shaping."""
     up = np.zeros(symbols.size * sps, dtype=np.complex128)
     up[::sps] = symbols
     h = rrc_filter(beta, sps, span)
@@ -105,18 +108,18 @@ def pulse_shape(symbols: np.ndarray, sps: int, beta: float, span: int = 6) -> np
 
 
 # --------------------------------------------------------------------------
-# 信道
+# channel
 # --------------------------------------------------------------------------
 @dataclass
 class ChannelConfig:
-    """信道损伤配置。Domain A / Domain B 各用一份。"""
+    """Channel impairment config. Domain A and Domain B each use one."""
 
-    snr_db: Tuple[float, float] = (10.0, 18.0)   # 区间，样本间随机取
-    cfo: float = 0.0                             # 归一化载波频偏（相对符号率）
-    phase_noise_deg: float = 0.0                 # 相位噪声标准差（度）
-    iq_gain_db: float = 0.0                      # IQ 幅度失衡
-    iq_phase_deg: float = 0.0                    # IQ 相位失衡（度）
-    gain_db: float = 0.0                         # 接收机整体增益偏移
+    snr_db: Tuple[float, float] = (10.0, 18.0)   # interval, drawn per sample
+    cfo: float = 0.0                             # normalized carrier frequency offset
+    phase_noise_deg: float = 0.0                 # phase-noise standard deviation (deg)
+    iq_gain_db: float = 0.0                      # IQ gain imbalance
+    iq_phase_deg: float = 0.0                    # IQ phase imbalance (deg)
+    gain_db: float = 0.0                         # overall receiver gain offset
 
     @classmethod
     def from_dict(cls, d: Optional[Dict] = None) -> "ChannelConfig":
@@ -128,9 +131,9 @@ class ChannelConfig:
 
     def describe(self) -> str:
         return (
-            f"SNR∈[{self.snr_db[0]:g},{self.snr_db[1]:g}]dB"
-            f", CFO={self.cfo:g}, PN={self.phase_noise_deg:g}°"
-            f", IQg={self.iq_gain_db:g}dB, IQφ={self.iq_phase_deg:g}°"
+            f"SNR in [{self.snr_db[0]:g},{self.snr_db[1]:g}]dB"
+            f", CFO={self.cfo:g}, PN={self.phase_noise_deg:g} deg"
+            f", IQg={self.iq_gain_db:g}dB, IQphi={self.iq_phase_deg:g} deg"
             f", gain={self.gain_db:g}dB"
         )
 
@@ -177,7 +180,10 @@ def apply_channel(
     rng: np.random.Generator,
     snr_db: Optional[float] = None,
 ) -> np.ndarray:
-    """按配置施加信道损伤。顺序：IQ 失衡 → CFO → 相位噪声 → 增益 → AWGN。"""
+    """Apply the channel impairments given by the config.
+
+    Order: IQ imbalance -> CFO -> phase noise -> gain -> AWGN.
+    """
     y = np.asarray(x, dtype=np.complex128)
     y = _add_iq_imbalance(y, cfg.iq_gain_db, cfg.iq_phase_deg)
     y = _add_cfo(y, cfg.cfo)
@@ -188,7 +194,7 @@ def apply_channel(
         rng.uniform(cfg.snr_db[0], cfg.snr_db[1])
     )
     y = _add_awgn(y, snr, rng)
-    # 统一归一化到单位平均功率（与 RadioML 一致）
+    # normalize to unit average power throughout (consistent with RadioML)
     p = np.mean(np.abs(y) ** 2)
     if p > 1e-20:
         y = y / np.sqrt(p)
@@ -196,7 +202,7 @@ def apply_channel(
 
 
 # --------------------------------------------------------------------------
-# 数据集
+# datasets
 # --------------------------------------------------------------------------
 def make_iq_dataset(
     n_samples: int,
@@ -209,13 +215,13 @@ def make_iq_dataset(
     seed: int = 0,
     return_snr: bool = False,
 ):
-    """生成一个 IQ 数据集。
+    """Generate one IQ dataset.
 
     Returns
     -------
-    X : (N, 2, L) float32，通道 0=I、1=Q
+    X : (N, 2, L) float32, channel 0=I and 1=Q
     y : (N,) int64
-    snr : (N,) float32（仅当 return_snr=True）
+    snr : (N,) float32 (only when return_snr=True)
     """
     rng = np.random.default_rng(seed)
     mods = list(modulations)
@@ -226,7 +232,7 @@ def make_iq_dataset(
     y = np.empty(n_samples, dtype=np.int64)
     snrs = np.empty(n_samples, dtype=np.float32)
 
-    # 预生成 CFG 的 SNR 采样
+    # draw the SNR samples declared by the config
     for i in range(n_samples):
         k = int(rng.integers(0, len(mods)))
         mod = mods[k]

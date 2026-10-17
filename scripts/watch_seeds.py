@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""多种子实验的实时进度查看器。
+"""Live progress viewer for the multi-seed experiments.
 
-    python scripts/watch_seeds.py               # 每 5 秒刷新，Ctrl+C 退出
-    python scripts/watch_seeds.py --once        # 只打一次快照
-    python scripts/watch_seeds.py -i 2          # 每 2 秒刷新
-    python scripts/watch_seeds.py --no-clear    # 追加模式（重定向到文件时用）
+    python scripts/watch_seeds.py               # refresh every 5 s, Ctrl+C to exit
+    python scripts/watch_seeds.py --once        # print a single snapshot
+    python scripts/watch_seeds.py -i 2          # refresh every 2 s
+    python scripts/watch_seeds.py --no-clear    # append mode (for redirecting to a file)
 
-只看文件，不干扰正在跑的实验。纯标准库，不需要 numpy / torch。
-全部完成后会自动打印跨种子汇总表。
+It only reads files and never disturbs a running experiment. Pure standard
+library, no numpy / torch needed. Once everything has finished it prints the
+cross-seed summary table automatically.
 
-目录约定（与 scripts/run_seeds.py 一致）：
+Directory convention (same as scripts/run_seeds.py):
     results/seed{N}/baseline/{backbone}.pt
     results/seed{N}/sensitivity/rank_{backbone}_{shift}.json
     results/seed{N}/equal_error/arm_{backbone}_{shift}.json
@@ -67,7 +68,7 @@ def use_color():
 
 # ---------------------------------------------------------------------------
 def read_config(path):
-    """只抠出 data.shifts 的键名，不依赖 pyyaml。"""
+    """Extract only the keys of data.shifts, without depending on pyyaml."""
     shifts, in_data, in_shifts = [], False, False
     if not path.exists():
         return shifts
@@ -99,10 +100,12 @@ class Model:
         self.logs = root / "experiments" / "logs"
 
     def seeds(self):
-        """返回 [(seed, 结果根目录)]。
+        """Return [(seed, results root)].
 
-        ``--seeds`` 指定的种子即使目录还没被创建也会列出来（run_seeds.py 是
-        惰性创建目录的），否则进度条的分母会偏小、ETA 会低估一半。
+        Seeds named by ``--seeds`` are listed even when their directory has not
+        been created yet (run_seeds.py creates directories lazily); otherwise the
+        progress-bar denominator is too small and the ETA is underestimated by
+        about half.
         """
         found = {}
         for d in sorted(self.results.glob("seed*")):
@@ -120,7 +123,7 @@ class Model:
                 sroot / "equal_error" / f"arm_{b}_{s}.json")
 
     def units(self):
-        """返回 [(seed, backbone, shift, kind)] 的全部工作单元。"""
+        """Return every work unit as [(seed, backbone, shift, kind)]."""
         u = []
         for seed, sroot in self.seeds():
             for b in self.backbones:
@@ -177,19 +180,22 @@ class Model:
             return last, []
 
     def eta(self):
-        """剩余时间估计。
+        """Remaining-time estimate.
 
-        训练单元（约 8 分钟）与敏感性/等误差臂单元（约 1 分钟）耗时差一个数量级，
-        用统一平均值会严重失真，所以分开估。常数取自实测：
-        cldnn 训练 8.4 分钟、resnet1d 约 7.7 分钟；10 组「敏感性 + 等误差臂」
-        合计 22 分钟 → 每组约 2.2 分钟。
+        A training unit (~8 min) and a sensitivity / equal-error unit (~1 min)
+        differ by an order of magnitude, so one average would be badly distorted;
+        hence the split estimate. The constants come from measurements: cldnn
+        trains in 8.4 min, resnet1d in about 7.7 min; 10 rounds of
+        "sensitivity + equal-error arm" take 22 min in total, so about 2.2 min
+        each.
 
-        注意：若不做种子过滤，已存在的旧种子会被算进"已完成"，
-        ETA 会显著低估。用 --seeds 限定本次运行的种子。
+        Note: without seed filtering, old seeds that already exist are counted as
+        "done" and the ETA is significantly underestimated. Use --seeds to limit
+        the estimate to the seeds of the current run.
         """
         don, tot = self.counts()
-        T_TRAIN = 8.0     # 分钟 / 次训练
-        T_COMBO = 2.2     # 分钟 / (一次敏感性 + 一次等误差臂)
+        T_TRAIN = 8.0     # minutes per training run
+        T_COMBO = 2.2     # minutes per (one sensitivity + one equal-error arm)
         left_train = max(0, tot["train"] - don["train"])
         left_pairs = max(0, tot["sens"] - don["sens"])
         return left_train * T_TRAIN + left_pairs * T_COMBO, None
@@ -325,10 +331,10 @@ def render(m, show_log, el_avg):
                 L.append("  " + "-" * (W - 4))
                 for r in d.get("rows", []):
                     L.append("  " + f"{r['backbone']:<10} {r['shift']:<15} {r['n_seeds']:>2} "
-                                   f"{f(r['rho_mean'])}±{f(r['rho_std']):<8} "
+                                   f"{f(r['rho_mean'])}+/-{f(r['rho_std']):<8} "
                                    f"{r['n_significant']}/{r['n_seeds']:<3} "
                                    f"{f(r['fisher_p'],4):>9} "
-                                   f"{f(r['cost_mean'],4)}±{f(r['cost_std'],4):<10} "
+                                   f"{f(r['cost_mean'],4)}+/-{f(r['cost_std'],4):<10} "
                                    f"{r['n_cost_positive']}/{r['n_seeds']}")
             except Exception as exc:
                 L.append(C.w(DIM, f"  (failed to read aggregate: {exc})"))
@@ -350,8 +356,10 @@ def main():
     ap.add_argument("--config", default="configs/base.yaml")
     ap.add_argument("--shifts", default=None)
     ap.add_argument("--seeds", default=None,
-                    help="只显示这些种子（逗号分隔）。不指定则显示全部；"
-                         "跑多种子时建议指定，否则旧种子的已完成工作会让 ETA 低估。")
+                    help="only show these seeds (comma separated). Defaults to all; "
+                         "when running multiple seeds it is better to set this, "
+                         "otherwise the finished work of older seeds makes the ETA "
+                         "too low.")
     args = ap.parse_args()
 
     root = pathlib.Path(args.root).resolve() if args.root else pathlib.Path(__file__).resolve().parents[1]

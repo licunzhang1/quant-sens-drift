@@ -1,4 +1,4 @@
-"""通用工具：可序列化转换、随机种子、配置读取。"""
+"""Shared utilities: JSON-safe conversion, random seeding, config loading."""
 
 from __future__ import annotations
 
@@ -6,22 +6,80 @@ import json
 import math
 import pathlib
 import random
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 
-__all__ = ["jsonable", "dump_json", "seed_everything", "load_config"]
+__all__ = [
+    "jsonable",
+    "dump_json",
+    "seed_everything",
+    "load_config",
+    "discover_seed_roots",
+    "find_result_file",
+]
+
+
+def discover_seed_roots(results_dir: "pathlib.Path") -> Dict[int, "pathlib.Path"]:
+    """Map a seed number to its results root.
+
+    Two layouts are supported, because the project used both:
+
+    * ``results/seed{N}/`` -- the multi-seed layout, preferred;
+    * ``results/`` -- the earlier flat single-seed layout. It is reported
+      under seed ``0``, since the seed cannot be recovered from the path.
+
+    Callers that only need to *find* a file should use :func:`find_result_file`
+    rather than walking this mapping themselves.
+    """
+    results_dir = pathlib.Path(results_dir)
+    out: Dict[int, pathlib.Path] = {}
+    for d in sorted(results_dir.glob("seed*")):
+        if d.is_dir() and d.name[4:].isdigit():
+            out[int(d.name[4:])] = d
+    if (results_dir / "sensitivity").is_dir() or (results_dir / "equal_error").is_dir():
+        out.setdefault(0, results_dir)
+    return out
+
+
+def find_result_file(
+    results_dir: "pathlib.Path",
+    sub: str,
+    filename: str,
+    seed: Optional[int] = None,
+) -> Optional["pathlib.Path"]:
+    """Locate ``<sub>/<filename>`` inside a results tree.
+
+    Search order: the requested seed directory, then every discovered seed
+    directory in ascending order, then the flat layout. Returns ``None`` when
+    the file does not exist anywhere.
+
+    This exists because the project moved from a flat ``results/sensitivity/``
+    layout to ``results/seed{N}/sensitivity/``; scripts that hard-coded the
+    flat path silently stopped finding their inputs after the move.
+    """
+    results_dir = pathlib.Path(results_dir)
+    if seed is not None:
+        p = results_dir / f"seed{seed}" / sub / filename
+        if p.exists():
+            return p
+    for _seed, root in discover_seed_roots(results_dir).items():
+        p = root / sub / filename
+        if p.exists():
+            return p
+    p = results_dir / sub / filename
+    return p if p.exists() else None
 
 
 def jsonable(obj: Any) -> Any:
-    """递归把对象转成严格可 JSON 序列化的形式。
+    """Recursively convert an object into a strictly JSON-serialisable form.
 
-    处理三件 numpy 常见的坑：
-      * ``np.bool_`` / ``np.int64`` / ``np.float64`` 不是 JSON 原生类型
-      * ``NaN`` / ``Inf`` 不是合法 JSON（``allow_nan=False`` 会直接报错）
-      * ``np.ndarray`` 需要转 list
+    Handles three common numpy pitfalls:
+      * ``np.bool_`` / ``np.int64`` / ``np.float64`` are not native JSON types
+      * ``NaN`` / ``Inf`` are not valid JSON (``allow_nan=False`` raises)
+      * ``np.ndarray`` has to be turned into a list
 
-    非有限浮点会被转成 ``None``，而不是写出非法的 ``NaN`` 字面量。
+    Non-finite floats become ``None`` rather than an illegal ``NaN`` literal.
     """
     if obj is None or isinstance(obj, (str, bool, int)):
         return obj
@@ -44,7 +102,7 @@ def jsonable(obj: Any) -> Any:
 
 
 def dump_json(path: str | pathlib.Path, obj: Any, indent: int = 2) -> pathlib.Path:
-    """严格 JSON 落盘（不允许 NaN/Inf 字面量）。"""
+    """Write strict JSON to disk (no NaN/Inf literals allowed)."""
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(jsonable(obj), indent=indent, ensure_ascii=False, allow_nan=False)
@@ -53,10 +111,11 @@ def dump_json(path: str | pathlib.Path, obj: Any, indent: int = 2) -> pathlib.Pa
 
 
 def seed_everything(seed: int = 42) -> None:
-    """固定所有随机源。**每一步实验前都要调**，否则结果不可复现。"""
+    """Seed every random source. **Call it before each experiment step**, or the
+    results will not be reproducible."""
     random.seed(seed)
     np.random.seed(seed)
-    try:  # torch 是可选的
+    try:  # torch is optional
         import torch  # type: ignore
 
         torch.manual_seed(seed)
@@ -69,7 +128,8 @@ def seed_everything(seed: int = 42) -> None:
 
 
 def load_config(path: str | pathlib.Path) -> Dict[str, Any]:
-    """读 YAML 配置。若没装 pyyaml，退回到一个极简解析（只支持本项目用到的子集）。"""
+    """Read a YAML config. If pyyaml is missing, fall back to a minimal parser
+    (only the subset used by this project is supported)."""
     path = pathlib.Path(path)
     text = path.read_text(encoding="utf-8")
     try:
@@ -81,7 +141,7 @@ def load_config(path: str | pathlib.Path) -> Dict[str, Any]:
 
 
 def _mini_yaml(text: str) -> Dict[str, Any]:
-    """极简 YAML 子集解析（仅用于 pyyaml 缺失时的兜底）。"""
+    """Minimal YAML subset parser (fallback only for when pyyaml is missing)."""
     import re
 
     root: Dict[str, Any] = {}
@@ -109,11 +169,13 @@ def _mini_yaml(text: str) -> Dict[str, Any]:
 
 
 def _split_top(s: str, sep: str = ",") -> list:
-    """按 ``sep`` 切分，但**忽略括号内的分隔符**。
+    """Split on ``sep`` but **ignore separators inside brackets**.
 
-    这是 mini-YAML 回退解析器的关键：``{snr_db: [-2, 6], cfo: 0.02}`` 里的
-    第一个逗号在方括号内，不能当作外层分隔符。朴素 split(",") 会把它切成
-    ``snr_db: [-2`` 和 ``6]`` —— 静默产生错误配置，比直接报错更危险。
+    This is the crux of the mini-YAML fallback parser: the first comma in
+    ``{snr_db: [-2, 6], cfo: 0.02}`` sits inside square brackets and must not be
+    taken as an outer separator. A naive split(",") would cut it into
+    ``snr_db: [-2`` and ``6]`` -- silently producing a wrong config, which is
+    more dangerous than raising an error outright.
     """
     out, depth, cur = [], 0, []
     for ch in s:

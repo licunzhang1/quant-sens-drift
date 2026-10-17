@@ -1,67 +1,82 @@
 # quant-sens
 
-量化敏感性的域依赖性 —— 信号分类模型中层间量化误差与分布偏移的可分离性研究。
+Quantization sensitivity and domain shift: how far can per-layer sensitivity
+rankings be transferred across deployment domains?
 
-## 问题
+## The question
 
-训练后量化（PTQ）的校准集选择与混合精度搜索，普遍依赖一个前提：
+Post-training quantization (PTQ) calibration and mixed-precision search both rest
+on an assumption:
 
-> 量化敏感性主要由架构与权值分布决定，因此一个代表性校准集
-> （甚至随机数据）就足以确定逐层比特分配。
+> Quantization sensitivity is determined mainly by the architecture and the
+> weight distribution, so a single representative calibration set (even random
+> data) is enough to decide per-layer bit allocation.
 
-这个前提在图像模型上大体成立，但在**信号模型 + 分布偏移**下没有被系统检验过。
+This holds reasonably well for vision models. It has not been systematically
+tested for signal-classification models under distribution shift.
 
-本项目定义
+This project defines
 
 ```
-ρ = Spearman( 源域逐层量化敏感性排序, 目标域逐层量化敏感性排序 )
+rho = Spearman( per-layer quant sensitivity ranks in source domain,
+                per-layer quant sensitivity ranks in target domain )
 ```
 
-并检验该前提在跨域部署场景下是否成立。
+and tests whether the assumption survives cross-domain deployment.
 
-## 主要结果
+## Main results
 
-两个骨干、五个目标域（含一个阴性对照）、**三个随机种子**（42 / 43 / 44）。
-源域 SNR (-2,6) dB，n_symbols=128、sps=4、4 类调制。表中为跨种子的均值 ± 标准差。
+Two backbones, five target domains (one of which is a null-shift control), and
+**three random seeds** (42, 43, 44). Source domain SNR (-2, 6) dB,
+`n_symbols=128`, `sps=4`, four modulation classes. Values are mean +/- std over seeds.
 
-| 骨干 | 层数 | 目标域 | ρ(loss) 均值±标准差 | 显著种子 | Fisher 合并 p | 域无知代价¹ 均值±标准差 | 为正的种子 |
+| Backbone | Layers | Target domain | rho(loss) mean+/-std | Seeds sig. | Fisher combined p | Cost of domain ignorance^1 | Positive seeds |
 |---|---|---|---|---|---|---|---|
-| CLDNN | 10 | D1 SNR (-8,0) | +0.778 ± 0.094 | 3/3 | 0.0001 | 0.0069 ± 0.0070 | 2/3 |
-| CLDNN | 10 | D2 CFO | -0.576 ± 0.219 | 1/3 | 0.0103 | 0.1240 ± 0.0488 | 3/3 |
-| CLDNN | 10 | D3 增益（对照） | +0.802 ± 0.273 | 2/3 | 0.0000 | **0.0039 ± 0.0057** | 2/3 |
-| CLDNN | 10 | D4 相位噪声 | -0.200 ± 0.468 | 1/3 | 0.2085 | 0.0861 ± 0.0821 | 3/3 |
-| CLDNN | 10 | D5 IQ 失衡 | -0.305 ± 0.432 | 1/3 | 0.1031 | 0.0417 ± 0.0317 | 3/3 |
-| ResNet1D | 16 | D1 SNR (-8,0) | +0.311 ± 0.349 | 1/3 | 0.0376 | 0.0313 ± 0.0123 | 3/3 |
-| ResNet1D | 16 | D2 CFO | -0.314 ± 0.316 | 1/3 | 0.0479 | **0.6629 ± 0.2092** | 3/3 |
-| ResNet1D | 16 | D3 增益（对照） | +0.590 ± 0.234 | 2/3 | 0.0001 | **0.0015 ± 0.0012** | 3/3 |
-| ResNet1D | 16 | D4 相位噪声 | -0.312 ± 0.347 | 1/3 | 0.0384 | 0.3785 ± 0.1433 | 3/3 |
-| ResNet1D | 16 | D5 IQ 失衡 | +0.048 ± 0.580 | 2/3 | 0.0156 | 0.0109 ± 0.0126 | 3/3 |
+| CLDNN | 10 | D1 SNR (-8,0) | +0.778 +/- 0.094 | 3/3 | 0.0001 | 0.0069 +/- 0.0070 | 2/3 |
+| CLDNN | 10 | D2 CFO | -0.576 +/- 0.219 | 1/3 | 0.0103 | 0.1240 +/- 0.0488 | 3/3 |
+| CLDNN | 10 | D3 gain (control) | +0.802 +/- 0.273 | 2/3 | 0.0000 | **0.0039 +/- 0.0057** | 2/3 |
+| CLDNN | 10 | D4 phase noise | -0.200 +/- 0.468 | 1/3 | 0.2085 | 0.0861 +/- 0.0821 | 3/3 |
+| CLDNN | 10 | D5 IQ imbalance | -0.305 +/- 0.432 | 1/3 | 0.1031 | 0.0417 +/- 0.0317 | 3/3 |
+| ResNet1D | 16 | D1 SNR (-8,0) | +0.311 +/- 0.349 | 1/3 | 0.0376 | 0.0313 +/- 0.0123 | 3/3 |
+| ResNet1D | 16 | D2 CFO | -0.314 +/- 0.316 | 1/3 | 0.0479 | **0.6629 +/- 0.2092** | 3/3 |
+| ResNet1D | 16 | D3 gain (control) | +0.590 +/- 0.234 | 2/3 | 0.0001 | **0.0015 +/- 0.0012** | 3/3 |
+| ResNet1D | 16 | D4 phase noise | -0.312 +/- 0.347 | 1/3 | 0.0384 | 0.3785 +/- 0.1433 | 3/3 |
+| ResNet1D | 16 | D5 IQ imbalance | +0.048 +/- 0.580 | 2/3 | 0.0156 | 0.0109 +/- 0.0126 | 3/3 |
 
-¹ 域无知代价：在固定总重构误差预算下，「按源域敏感性分配位宽」相对
-「按目标域敏感性分配位宽」在目标域上多付出的预测损伤。前者是现实中可实现的，
-后者不可实现，构成上界。
+^1 Cost of domain ignorance: under a fixed total reconstruction-error budget,
+the extra predicted damage on the target domain incurred by allocating
+bit-widths from **source-domain** sensitivities instead of **target-domain**
+sensitivities. The former is what you can actually do; the latter is
+unattainable and serves as an upper bound.
 
-逐种子明细见 [results/multiseed/multiseed.md](results/multiseed/multiseed.md)。
+Per-seed detail: [results/multiseed/multiseed.md](results/multiseed/multiseed.md).
 
-**结论**
+**Conclusions**
 
-1. **不存在域无关的最优比特分配。** 30 个（骨干 × 偏移 × 种子）条件中有 **26 个**
-   域无知代价为正。阴性对照的代价在两个骨干上都是最小的（0.0039 / 0.0015），
-   真实偏移下最高达 **0.66 ± 0.21**。参照点正确归零、真实偏移下一致为正 ——
-   这是本项目最稳的一条结论。
-2. **ρ 不是可靠的结论载体，连符号都不稳定。** 10 个组合中只有 3 个做到 3/3 种子
-   显著；更严重的是符号会随种子翻转（CLDNN × D5：单种子 +0.103，三种子
-   **-0.305**；D4：单种子 +0.139，三种子 **-0.200**）。半数组合的标准差与
-   均值同量级甚至更大（如 +0.048 ± 0.580）。此外 ρ 还强烈依赖**参考位宽**：
-   同一对域在 2 bit 上 ρ=+0.867（p=0.002）而在 4 bit 上 ρ=+0.103（p=0.78）。
-   因此 ρ 只能作为诊断量，结论应以 (骨干 × 偏移 × 参考位宽 × 种子) 上的
-   分布给出。
-3. **Fisher 合并能找回被单次实验掩盖的效应。** 例如 CLDNN × D2 CFO 单看只有
-   1/3 种子显著（p 分别为 0.258 / …），合并后 p = 0.0103。
+1. **No domain-agnostic optimal bit allocation exists.** 26 of 30
+   (backbone x shift x seed) conditions have a positive cost of domain
+   ignorance. The null-shift control has the *smallest* cost on both backbones
+   (0.0039 and 0.0015), while real shifts reach **0.66 +/- 0.21**. A reference
+   point that correctly goes to zero, and a quantity that is consistently
+   positive under real shift -- this is the most solid result in the project.
+2. **rho is not a reliable carrier for the conclusion, and its sign is not even
+   stable.** Only 3 of 10 combinations are significant on all three seeds, and
+   the sign flips across seeds (CLDNN x D5: +0.103 on one seed, **-0.305** over
+   three; D4: +0.139 on one seed, **-0.200** over three). Half the combinations
+   have a standard deviation at or above their mean (e.g. +0.048 +/- 0.580).
+   rho also depends strongly on the **reference bit-width**: the same domain
+   pair gives rho = +0.867 (p = 0.002) at 2 bit and rho = +0.103 (p = 0.78) at
+   4 bit. rho is therefore a diagnostic, not a conclusion; results should be
+   reported as a distribution over
+   (backbone x shift x reference bit-width x seed).
+3. **Fisher's method recovers effects that a single run cannot resolve.**
+   CLDNN x D2 CFO has only 1 of 3 seeds individually significant, but
+   p = 0.0103 combined.
 
-全部实验记录、失败案例与方法论细节见 [docs/findings.md](docs/findings.md)。
+Full experimental record, failure cases and methodology notes:
+[docs/findings.md](docs/findings.md).
 
-## 安装
+## Install
 
 ```bash
 python -m venv .venv
@@ -69,101 +84,123 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-CPU 即可。实测环境：Python 3.13.5、torch 2.14.1+cpu、scipy 1.18.1、scikit-learn 1.9.1。
+CPU is sufficient. Tested with Python 3.13.5, torch 2.14.1+cpu, scipy 1.18.1,
+scikit-learn 1.9.1.
 
-## 运行
+## Running
 
-先跑不依赖 torch 的核心验证（几秒）：
+Start with the core checks that do not need torch (a few seconds):
 
 ```bash
 python tests/run_all.py
 ```
 
-再跑完整实验（两个骨干 × 五个目标域，纯 CPU 约 90 分钟）：
+Then the full experiment (two backbones x five target domains, about 90 minutes
+on CPU):
 
 ```bash
 python scripts/run_matrix.py --config configs/base.yaml --skip-existing
 ```
 
-`--skip-existing` 支持断点续跑：所有中间结果各自落盘，中断后重跑只补缺的部分。
+`--skip-existing` makes runs resumable: every intermediate result is written to
+its own file, so an interrupted run only redoes what is missing.
 
-另开一个终端查看进度（仅用标准库，不需要 numpy/torch）：
+To watch progress from another terminal (standard library only, no numpy/torch):
 
 ```bash
-python scripts/watch_progress.py
+python scripts/watch_seeds.py
 ```
 
-### 多种子（给出误差棒）
+### Multiple seeds (error bars)
 
-单次运行的 ρ 方差很大，只有多种子才能给出"均值 ± 标准差"。
+A single run of rho has a large variance, so only multiple seeds give you a
+mean +/- std.
 
 ```bash
-# 补跑额外种子（可断点续跑）；两个种子约 135 分钟（CPU）
+# Add further seeds (resumable); about 135 minutes for two seeds on CPU
 python scripts/run_seeds.py --seeds 43,44 --skip-existing
 
-# 跑的时候实时看进度（另开一个终端，纯标准库）
+# Watch progress from another terminal (standard library only)
 python scripts/watch_seeds.py --seeds 43,44
 
-# 聚合：均值±标准差 + 跨种子 Fisher 合并 p
+# Aggregate: mean +/- std plus Fisher combined p across seeds
 python scripts/aggregate_seeds.py
 ```
 
-产物：`results/multiseed/multiseed.md`、`multiseed.csv`、`multiseed.json`。
-结果与订正说明见 [docs/findings.md](docs/findings.md) 发现 10。
+Outputs: `results/multiseed/multiseed.md`, `multiseed.csv`, `multiseed.json`.
+See finding 10 in [docs/findings.md](docs/findings.md) for the results and for
+the corrections it makes to the single-seed numbers.
 
-## 关键实现
+## Implementation notes
 
-- **逐层选择性量化**：`quantize_one_layer()` 临时替换单层权重（可选量化其激活），
-  在 `finally` 中恢复，异常也不会污染模型。手写 fake-quant 而非使用
-  `torch.quantization`，以精确控制 per-channel/per-tensor 与权重/激活的组合。
-- **敏感性主口径为 loss**：准确率会饱和（源域 acc 达 1.0 时，把某层量化到 2 bit
-  仍可能是 1.0），导致 Δacc ≡ 0、秩相关退化为 NaN。脚本同时输出两套口径并提示差异。
-- **ρ 配置换检验与 bootstrap 区间**：层数为 10~16 时 Spearman ρ 的抽样方差很大，
-  只报 ρ 不报 p 值不严谨。
-- **框架无关的分析层**：`src/quant/core.py`、`src/analysis/`、`src/data/{synth,features}.py`
-  仅依赖 numpy，可独立于 torch 验证。torch 相关模块通过惰性导入隔离。
+- **Selective per-layer quantization.** `quantize_one_layer()` temporarily
+  replaces one layer's weights (and optionally quantizes its activations) and
+  restores them in a `finally` block, so an exception cannot leave the model in
+  a quantized state. Fake quantization is written by hand rather than taken from
+  `torch.quantization`, because the experiment needs exact control over
+  per-channel vs per-tensor and over the weight/activation combination.
+- **Loss is the primary sensitivity metric, not accuracy.** Accuracy saturates:
+  once source-domain accuracy reaches 1.0, quantizing a layer to 2 bit can still
+  leave it at 1.0, so delta-accuracy is identically zero and the rank
+  correlation degenerates to NaN. The scripts compute both and print the
+  difference.
+- **rho always comes with a permutation test and a bootstrap interval.** With
+  10 to 16 layers the sampling variance of Spearman rho is large; reporting rho
+  without a p-value is not defensible.
+- **A framework-independent analysis layer.** `src/quant/core.py`,
+  `src/analysis/` and `src/data/{synth,features}.py` depend only on numpy and
+  can be verified without torch. Torch-dependent modules are isolated behind
+  lazy imports.
 
-## 目录结构
+## Layout
 
 ```
-configs/       实验配置（难度区间已按实测标定）
+configs/       experiment configuration (difficulty range calibrated empirically)
 src/
-  data/        合成 IQ 生成、经典 AMC 累积量特征、torch Dataset
-  models/      CLDNN、1D-ResNet，以及一个纯 numpy 参考实现
-  quant/       量化数学（numpy，可独立测试）与 torch 侧 fake-quant
-  analysis/    敏感性矩阵、秩相关、等重构误差臂、代理量
-  offsets/     分布偏移的构造与管理
-  viz/         报告图表
-scripts/       训练、敏感性、等误差臂、矩阵、多种子、聚合、出图、进度查看
-tests/         单元测试、端到端冒烟测试、三个诊断脚本
-results/       实测结果（权重除外，见 .gitignore）
-docs/          实验记录与方法论
+  data/        synthetic IQ generator, classical AMC cumulant features, torch Dataset
+  models/      CLDNN, 1D-ResNet, and a pure-numpy reference implementation
+  quant/       quantization math (numpy, independently testable) and torch fake-quant
+  analysis/    sensitivity matrix, rank correlation, equal-error arm, proxies
+  offsets/     construction and management of distribution shifts
+  viz/         report figures
+scripts/       training, sensitivity, equal-error arm, matrix, seeds, aggregation,
+               figures, progress viewer
+tests/         unit tests, end-to-end smoke test, three diagnostic scripts
+tools/         small maintenance utilities (encoding, verdict refresh)
+results/       measured results, one directory per seed: results/seed{N}/
+               (weights excluded, see .gitignore)
+docs/          experimental record and methodology
 ```
 
-## 数据
+## Data
 
-默认使用内置**合成 IQ 生成器**（`src/data/synth.py`）：零下载，且能精确控制
-偏移的种类与强度 —— 这是必需的，因为公开数据集通常只提供单一固定信道条件，
-无法支撑受控的偏移实验。
+The default is the built-in **synthetic IQ generator** (`src/data/synth.py`):
+no download, and it gives exact control over the kind and strength of the shift.
+That control is necessary here, because public datasets usually provide a single
+fixed channel condition and cannot support a controlled shift experiment.
 
-若要接入公开数据集（如 RML2018.01A），实现一个新的 `Dataset` 并让
-`configs/base.yaml` 指向它即可，分析层无需改动。
+To use a public dataset instead (for example RML2018.01A), implement a new
+`Dataset` and point `configs/base.yaml` at it. The analysis layer needs no
+changes.
 
-## 复现全部结果
+## Reproducing everything
 
 ```bash
-python tests/run_all.py                                        # 核心数学与管线
-python scripts/train_baseline.py --backbone cldnn               # 训练（约 8 分钟）
+python tests/run_all.py                                        # core math and pipeline
+python scripts/train_baseline.py --backbone cldnn              # train (~8 min)
 python scripts/train_baseline.py --backbone resnet1d
-python scripts/run_matrix.py --skip-existing                    # 敏感性 + 等误差臂 + 汇总
-python scripts/rank_vs_bits.py                                  # ρ 的参考位宽依赖性
-python scripts/make_figures.py --backbone cldnn --shift D1_snr  # 出图
+python scripts/run_matrix.py --skip-existing                   # sensitivity + arm + summary
+python scripts/run_seeds.py --seeds 43,44 --skip-existing       # extra seeds
+python scripts/aggregate_seeds.py                              # mean +/- std, Fisher p
+python scripts/rank_vs_bits.py                                 # rho vs reference bit-width
+python scripts/make_figures.py --backbone cldnn --shift D1_snr # figures
 ```
 
-权重文件（`results/baseline/*.pt`）不入库，用上面的 `train_baseline.py` 重新生成即可。
-中间结果（`results/sensitivity/*.npz`）已入库，因此 `run_equal_error.py`
-与 `rank_vs_bits.py` 可在不训练的情况下直接重跑。
+Weight files (`results/seed*/baseline/*.pt`) are not committed; regenerate them
+with `train_baseline.py`. The intermediate results
+(`results/seed*/sensitivity/*.npz`) *are* committed, so `run_equal_error.py` and
+`rank_vs_bits.py` can be re-run without training anything.
 
-## 许可
+## License
 
-MIT，见 [LICENSE](LICENSE)。
+MIT, see [LICENSE](LICENSE).

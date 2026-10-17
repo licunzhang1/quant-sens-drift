@@ -1,25 +1,25 @@
-# 实测发现与验证状态
+# Measured findings and verification status
 
-> 本文件记录**在构建代码库过程中实际跑出来的结果**，不是设计意图。
-> 每一条都有可复现的脚本。写报告时这些可以直接用。
+> This file records **results actually produced while building the codebase**, not design intent.
+> Every entry has a reproducible script. These can be used directly when writing the report.
 
-复现命令：
+Reproduction commands:
 
 ```bash
-python tests/run_all.py                 # 单元测试 + 冒烟测试
-python tests/diagnose_data.py           # 发现 1
-python tests/diagnose_features.py       # 发现 1 的解药
-python tests/diagnose_regime.py         # 发现 3 与可用区间
-python tests/smoke_pipeline.py          # 全链路
+python tests/run_all.py                 # unit tests + smoke test
+python tests/diagnose_data.py           # Finding 1
+python tests/diagnose_features.py       # the remedy for Finding 1
+python tests/diagnose_regime.py         # Finding 3 and the usable regime
+python tests/smoke_pipeline.py          # end-to-end pipeline
 ```
 
 ---
 
-## 发现 1｜原始 IQ 直接喂 MLP 学不会调制识别 —— 是**表示**问题，不是数据问题
+## Finding 1 | Feeding raw IQ straight into an MLP does not learn modulation recognition -- it is a **representation** problem, not a data problem
 
-`tests/diagnose_data.py` 输出：
+`tests/diagnose_data.py` output:
 
-| n_symbols | sps | L | train acc | test acc | 逐类测试准确率（bpsk/qpsk/8psk/16qam） |
+| n_symbols | sps | L | train acc | test acc | per-class test accuracy (bpsk/qpsk/8psk/16qam) |
 |---|---|---|---|---|---|
 | 32 | 2 | 64 | 0.9765 | 0.4680 | 0.98 / 0.30 / 0.33 / 0.30 |
 | 32 | 4 | 128 | 0.9975 | 0.5007 | 1.00 / 0.34 / 0.34 / 0.32 |
@@ -28,511 +28,557 @@ python tests/smoke_pipeline.py          # 全链路
 | 128 | 8 | 1024 | 1.0000 | 0.4847 | 0.97 / 0.35 / 0.31 / 0.32 |
 | 256 | 4 | 1024 | 1.0000 | 0.4413 | 0.84 / 0.28 / 0.30 / 0.32 |
 
-**现象**：无论加多少数据、多大的模型、多高的过采样率，训练准确率都能到 1.0，
-但测试准确率**始终卡在 0.50**；逐类看只有 BPSK 能分（≈0.98），
-QPSK/8PSK/16QAM 全部 ≈0.33。
+**Observation**: no matter how much data, how large the model, or how high the oversampling
+ratio, the training accuracy always reaches 1.0, but the test accuracy **stays stuck at 0.50**;
+per class, only BPSK is separable (~0.98) while QPSK/8PSK/16QAM are all ~0.33.
 
-**原因**：调制方式的信息藏在样本的**分布**里（星座形状 → 高阶矩/累积量），
-而不是某几个采样点上。MLP 走的是"逐坐标加权求和"，天然不擅长提取分布性统计量，
-于是它选择记住训练样本而不是学规律。
+**Cause**: the modulation information is hidden in the **distribution** of the samples
+(constellation shape -> higher-order moments/cumulants), not at a handful of sample points.
+The MLP does a "weighted sum per coordinate", which is inherently bad at extracting
+distributional statistics, so it chooses to memorize the training samples instead of
+learning the regularity.
 
-**解药**：换成经典 AMC 累积量特征（`src/data/features.py`）。
-`tests/diagnose_features.py` 输出：
+**Remedy**: switch to the classic AMC cumulant features (`src/data/features.py`).
+`tests/diagnose_features.py` output:
 
 ```
-严格留出划分（同一数据集 75/25）：train=1.0000  test=1.0000
-新生成数据集（不同种子）      ：test=1.0000
+Strict holdout split (same dataset, 75/25): train=1.0000  test=1.0000
+Freshly generated dataset (different seed)      : test=1.0000
   bpsk acc=1.000   qpsk acc=1.000   8psk acc=1.000   16qam acc=1.000
 ```
 
-**对项目的意义**：
-1. `tests/smoke_pipeline.py` 的参考模型必须用特征表示，否则"域间隙"
-   会与"泛化失败"混在一起，跨域敏感性分析测的全是噪声。
-2. 这**顺手给了项目第二个资产**：累积量分类器就是研究设计里
-   **经典 DSP 基线臂**的现成实现，可与 CLDNN-on-raw-IQ 做严格对照。
+**What this means for the project**:
+1. The reference model in `tests/smoke_pipeline.py` must use a feature representation,
+   otherwise the "domain gap" will be mixed together with "generalization failure", and the
+   cross-domain sensitivity analysis will measure nothing but noise.
+2. This **incidentally gives the project a second asset**: the cumulant classifier is a
+   ready-made implementation of the **classic DSP baseline arm** in the study design, and can
+   be strictly compared against CLDNN-on-raw-IQ.
 
 ---
 
-## 发现 2｜准确率会饱和，敏感性的**主口径必须是 loss**
+## Finding 2 | Accuracy saturates, so the **primary metric for sensitivity must be loss**
 
-`tests/smoke_pipeline.py` 早期版本（域 A acc = 1.0000）输出：
+Output of the early version of `tests/smoke_pipeline.py` (domain A acc = 1.0000):
 
 ```
-Domain A 敏感性(acc): [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-ρ (Spearman) = nan        <- 秩相关直接退化
-A 域 acc 敏感性唯一值个数 = 1 / 8
+Domain A sensitivity (acc): [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+rho (Spearman) = nan        <- the rank correlation degenerates outright
+Number of unique values in domain-A acc sensitivity = 1 / 8
 ```
 
-**现象**：同域准确率已经 1.0 时，把某一层量化到 2 bit 仍然可能是 1.0，
-于是 Δacc ≡ 0，敏感性向量全为 0，Spearman ρ 变成 NaN。
+**Observation**: when the in-domain accuracy is already 1.0, quantizing some layer to 2 bit
+can still leave it at 1.0, so Delta_acc == 0, the sensitivity vector is entirely 0, and the
+Spearman rho becomes NaN.
 
-**原因**：准确率是**有饱和上限的离散量**。在 loss 已经接近 0 的平坦极小值附近，
-参数量化带来的微小扰动不足以跨越决策边界。
+**Cause**: accuracy is a **discrete quantity with a saturation ceiling**. Near a flat minimum
+where the loss is already close to 0, the tiny perturbation introduced by weight quantization
+is not enough to cross a decision boundary.
 
-**处理**：
-1. 敏感性分析的主口径改为 **loss**（连续、无饱和）；
-   脚本同时算 acc 作为对照，并把差异并排打印出来。
-   `configs/base.yaml` 里 `sensitivity.metric` 默认已设为 `loss`。
-2. **难度要控制在源域不饱和的区间**（见发现 3 的扫描）。
-3. 训练必须留验证集做早停，不要训到 loss≈0。
+**Handling**:
+1. The primary metric for the sensitivity analysis becomes **loss** (continuous, no
+   saturation); the script also computes acc as a control and prints the two side by side.
+   In `configs/base.yaml` the default of `sensitivity.metric` is already set to `loss`.
+2. **Difficulty must be kept in the regime where the source domain is not saturated** (see the
+   sweep in Finding 3).
+3. Training must hold out a validation set for early stopping; do not train until loss ~ 0.
 
-修复后的完整运行（`tests/smoke_pipeline.py`，域 A SNR=(4,12)、域 B SNR=(-2,6)）：
+The complete run after the fix (`tests/smoke_pipeline.py`, domain A SNR=(4,12), domain B SNR=(-2,6)):
 
-| 口径 | ρ | p 值 |
+| metric | rho | p-value |
 |---|---|---|
-| **loss（主）** | **+0.7143** | 0.0599 |
-| acc（对照） | +0.5063 | 0.2119 |
+| **loss (primary)** | **+0.7143** | 0.0599 |
+| acc (control) | +0.5063 | 0.2119 |
 
-**两个口径给出不同的 ρ，这正是"度量口径会改变结论"的直接证据**——
-本身就是报告里可以写的一节。
+**The two metrics give different rho, which is direct evidence that the metric definition
+changes the conclusion** -- this is itself a section that can be written into the report.
 
 ---
 
-## 发现 3｜**表示方式决定了哪种域偏移是致命的**
+## Finding 3 | **The representation decides which domain shift is fatal**
 
-`tests/diagnose_regime.py` 的 CFO 隔离实验。
-固定同一个 SNR 偏移 (6,14) → (0,8) dB，**只改载波频偏 CFO**：
+The CFO isolation experiment in `tests/diagnose_regime.py`.
+The SNR shift is fixed at (6,14) -> (0,8) dB and **only the carrier frequency offset CFO is changed**:
 
-| CFO | 目标域准确率 |
+| CFO | Target-domain accuracy |
 |---|---|
 | 0.000 | **0.6875** |
 | 0.001 | 0.4288 |
 | 0.005 | 0.3300 |
-| 0.020 | 0.3137 ← 随机水平 |
+| 0.020 | 0.3137 <- chance level |
 
-**机制**：高阶累积量**不是 CFO 不变的**。``E[z^4]`` 在 CFO 下带上
-``exp(j8πfk)`` 的相位；L=512、f=0.02 时相位转过约 82 圈，
-累积量的样本平均直接抵消归零。
+**Mechanism**: higher-order cumulants are **not CFO-invariant**. ``E[z^4]`` picks up an
+``exp(j8*pi*f*k)`` phase under CFO; with L=512 and f=0.02 the phase turns through about 82
+revolutions, and the sample average of the cumulant cancels straight to zero.
 
-**这不是 bug，而是一个应该写进报告的结论**：
+**This is not a bug, it is a conclusion that belongs in the report**:
 
-> **"域偏移的强度"不是绝对量，它取决于输入表示。**
-> 同一个 CFO 对累积量特征是灾难性的，对能学到相位不变性的 CNN 骨干
-> 可能只是轻微退化。
+> **The "strength of a domain shift" is not an absolute quantity; it depends on the input representation.**
+> The same CFO is catastrophic for cumulant features, while for a CNN backbone that can learn
+> phase invariance it may be only a mild degradation.
 
-本项目的因子分解协议（表示 × 偏移类型 × 量化方案）正好能刻画这一点。
-它把"哪个域偏移最致命"从一句断言变成了可测量的二维表。
+The factorized protocol of this project (representation x shift type x quantization scheme) is
+exactly what characterizes this point. It turns "which domain shift is most fatal" from an
+assertion into a measurable two-dimensional table.
 
 ---
 
-## 发现 4｜"源域不饱和、目标域不退化"的可用难度区间
+## Finding 4 | The usable difficulty regime where "the source domain is not saturated and the target domain has not collapsed"
 
-`tests/diagnose_regime.py` 扫描结果（筛选条件：源域 acc ∈ [0.85, 0.975]
-且 2bit 最大 Δloss > 1e-3；目标域 acc ∈ [0.35, 0.75]）：
+Sweep results from `tests/diagnose_regime.py` (selection criteria: source-domain acc in
+[0.85, 0.975] and max 2bit Delta_loss > 1e-3; target-domain acc in [0.35, 0.75]):
 
-| n_symbols | SNR_A | SNR_B | CFO | epochs | accA | accB | 2bit 最大 Δloss |
+| n_symbols | SNR_A | SNR_B | CFO | epochs | accA | accB | max 2bit Delta_loss |
 |---|---|---|---|---|---|---|---|
 | **64** | **(4,12)** | **(-2,6)** | **0** | **100** | **0.9487** | **0.5637** | **3.003** |
 | 32 | (8,16) | (0,8) | 0 | 80 | 0.9650 | 0.5525 | 0.097 |
 | 32 | (6,14) | (-2,6) | 0 | 80 | 0.9400 | 0.4700 | 1.052 |
 
-不满足条件的典型失败模式：
-- 源域 (10,18) dB → accA = 1.0000，**饱和**，Δloss ≈ 0.003
-- 目标域 (-4,4) dB → accB ≈ 0.25，**退化到随机**，敏感性变噪声
+Typical failure modes that do not meet the criteria:
+- Source domain (10,18) dB -> accA = 1.0000, **saturated**, Delta_loss ~ 0.003
+- Target domain (-4,4) dB -> accB ~ 0.25, **collapsed to chance**, sensitivity turns into noise
 
-`configs/base.yaml` 已按第一行设置。
+`configs/base.yaml` is already set to the first row.
 
-> **实践建议**：开跑正式实验前，先用 `diagnose_regime.py` 扫一遍你自己的
-> 骨干与数据集。这个"先定难度区间再谈结论"的步骤，本身就是实验设计的一部分，
-> 而且能防止整整一学期的实验白做。
+> **Practical advice**: before launching a formal experiment, sweep your own backbone and
+> dataset once with `diagnose_regime.py`. This step of "fix the difficulty regime first, then
+> talk about conclusions" is itself part of the experimental design, and it can prevent a whole
+> semester of experiments from being wasted.
 
 ---
 
-## 端到端冒烟测试的当前输出
+## Current output of the end-to-end smoke test
 
-`python tests/smoke_pipeline.py`（8 层 MLP + 累积量特征，约 7 秒）：
+`python tests/smoke_pipeline.py` (8-layer MLP + cumulant features, about 7 seconds):
 
-| 指标 | 值 |
+| Metric | Value |
 |---|---|
-| 表示 | amc_cumulants（14 维） |
-| 同域泛化间隙 | +0.0563 |
-| 跨域掉点 (Δacc) | 0.9430 → 0.5670，**+0.3760** |
-| ρ (loss 口径) | **+0.7143**（p = 0.0599，95% CI [-0.077, +1.000]） |
-| ρ (acc 口径) | +0.5063（p = 0.2119） |
-| 等误差臂：uniform / agnostic / oracle | [4,4,4,4,4,4,4,4] / [8,2,8,2,2,8,2,2] / [2,2,8,2,2,8,8,2] |
-| 域无知代价 (agnostic - oracle) | **+0.0579（相对 +13.8%）** |
+| Representation | amc_cumulants (14-dimensional) |
+| In-domain generalization gap | +0.0563 |
+| Cross-domain drop (Delta_acc) | 0.9430 -> 0.5670, **+0.3760** |
+| rho (loss metric) | **+0.7143** (p = 0.0599, 95% CI [-0.077, +1.000]) |
+| rho (acc metric) | +0.5063 (p = 0.2119) |
+| Equal-error arms: uniform / agnostic / oracle | [4,4,4,4,4,4,4,4] / [8,2,8,2,2,8,2,2] / [2,2,8,2,2,8,8,2] |
+| Domain-agnostic cost (agnostic - oracle) | **+0.0579 (relative +13.8%)** |
 
-**怎么读**：ρ = +0.71 但 p = 0.06，落在"接近显著但未达"的区间。
-这个结果比"ρ 显著为 1"或"ρ 显著为 0"都更常见也更真实——
-它说明 n=8 层时统计功效不足，**真实实验必须靠多骨干、多偏移、多随机种子来累积证据**，
-而不是靠单次运行的 ρ。
+**How to read this**: rho = +0.71 but p = 0.06, which lands in the "close to significant but
+not there" band. This result is both more common and more honest than either "rho
+significantly 1" or "rho significantly 0" -- it shows that with n=8 layers the statistical
+power is insufficient, and **a real experiment has to accumulate evidence from multiple
+backbones, multiple shifts and multiple random seeds**, not from the rho of a single run.
 
 ---
 
-## 发现 5｜层数不足会让 ρ 失去统计功效（实测 CLDNN 只有 5 层）
+## Finding 5 | Too few layers makes rho lose statistical power (the measured CLDNN has only 5 layers)
 
-最初实现的 CLDNN 每个 stage 一个卷积，可量化权重层只有 **5 个**（3 conv + 2 fc）：
+The originally implemented CLDNN used one convolution per stage, so only **5** quantizable
+weight layers were left (3 conv + 2 fc):
 
 ```
-cldnn      可量化权重层 =   5   参数量 =   158,340
+cldnn      quantizable weight layers =   5   parameters =   158,340
     [ 0] conv.0   [ 1] conv.4   [ 2] conv.8   [ 3] fc.0   [ 4] fc.3
-resnet1d   可量化权重层 =  16   参数量 =   443,524
+resnet1d   quantizable weight layers =  16   parameters =   443,524
 ```
 
-n=5 时 Spearman ρ 的 95% bootstrap CI 实际测出来是 **`[-1.000, +0.233]`** ——
-宽到没有任何信息量，置换检验的最小可能 p 值也只有约 0.008。
+At n=5 the measured 95% bootstrap CI of the Spearman rho is **`[-1.000, +0.233]`** -- so wide
+that it carries no information at all, and the smallest possible p-value of the permutation
+test is only about 0.008.
 
-**修正**：把 CLDNN 改成每个 stage 两个卷积（`convs_per_stage=2`），
-默认配置下得到 8 conv + 2 fc = **10 个权重层**：
+**Fix**: change CLDNN to two convolutions per stage (`convs_per_stage=2`), which in the default
+configuration gives 8 conv + 2 fc = **10 weight layers**:
 
 ```
-cldnn      权重层  10   参数    618,116
-resnet1d   权重层  16   参数    443,524
+cldnn      weight layers  10   parameters    618,116
+resnet1d   weight layers  16   parameters    443,524
 ```
 
-`scripts/run_sensitivity.py` 现在会在层数 < 8 时直接警告。
-**这是一条开工前就该检查的硬约束，不是调优项。**
+`scripts/run_sensitivity.py` now warns outright when the layer count is < 8.
+**This is a hard constraint that should be checked before starting work, not a tuning knob.**
 
 ---
 
-## 发现 6｜"偏移强度取决于表示"——用同一个数据集、两个骨干证实
+## Finding 6 | "Shift strength depends on the representation" -- confirmed on the same dataset with two backbones
 
-发现 3 用累积量特征得出"CFO 是灾难"。换到能学相位不变性的 CNN 骨干上，
-**同一个数据集、同一个 CFO=0.02**：
+Finding 3 concluded from cumulant features that "CFO is catastrophic". Moving to a CNN backbone
+that can learn phase invariance, **with the same dataset and the same CFO=0.02**:
 
-| 目标域 | 累积量特征 + MLP | CLDNN | ResNet1D |
+| Target domain | Cumulant features + MLP | CLDNN | ResNet1D |
 |---|---|---|---|
-| D2_cfo | acc **0.31**（随机水平） | acc **0.4375** | acc **0.4767** |
-| — 相对源域掉点 | — | +0.533 | +0.503 |
+| D2_cfo | acc **0.31** (chance level) | acc **0.4375** | acc **0.4767** |
+| - drop relative to source domain | - | +0.533 | +0.503 |
 
-CNN 明显更抗 CFO（0.44~0.48 vs 0.31），但**仍然掉了一半以上**。
+The CNN is clearly more CFO-robust (0.44~0.48 vs 0.31), but **it still loses more than half**.
 
-**结论更精确了**：CFO 对所有表示都有害，但**危害幅度由表示决定**。
-这比"CFO 是灾难"这种断言更有价值——它把"域偏移强度"变成了
-一个**随表示变化、可测量的量**，而不是一个绝对属性。
+**The conclusion is now more precise**: CFO is harmful to every representation, but **the
+magnitude of the harm is decided by the representation**. This is worth more than an assertion
+like "CFO is catastrophic" -- it turns "domain shift strength" into **a measurable quantity
+that varies with the representation**, rather than an absolute property.
 
 ---
 
-## 发现 7｜整体增益偏移是**无效偏移**（阴性对照）
+## Finding 7 | A global gain shift is an **ineffective shift** (negative control)
 
-`D3_gain`（整体增益 +6 dB）在两个骨干上几乎不产生任何域间隙：
+`D3_gain` (global gain +6 dB) produces almost no domain gap on either backbone:
 
-| 骨干 | 源域 acc | D3_gain acc | 掉点 |
+| Backbone | Source-domain acc | D3_gain acc | Drop |
 |---|---|---|---|
 | CLDNN | 0.9705 | 0.9650 | +0.0055 |
 | ResNet1D | 0.9800 | 0.9792 | +0.0008 |
 
-**原因是每个样本都做了功率归一化**（`apply_channel` 末尾除以 RMS），
-整体增益被完全消掉了。
+**The reason is that every sample is power-normalized** (division by the RMS at the end of
+`apply_channel`), which cancels the global gain completely.
 
-**这不是 bug，而是一个有用的阴性对照**：它检验"管线是否会在没有偏移时
-正确地报告没有偏移"。`scripts/train_baseline.py` 现在会自动识别并提示：
+**This is not a bug but a useful negative control**: it tests whether the pipeline correctly
+reports no shift when there is no shift. `scripts/train_baseline.py` now detects this
+automatically and prints:
 
 ```
-[!] D3_gain: 域间隙仅 +0.0055 —— 这是一个**阴性对照**（无有效偏移）。
-  管线应当正确报告'无影响'；不要把它当作有意义的偏移臂。
+[!] D3_gain: domain gap only +0.0055 -- this is a **negative control** (no effective shift).
+  The pipeline should correctly report 'no effect'; do not treat it as a meaningful shift arm.
 ```
 
-**写报告时的用法**：把 D3_gain 放在结果表的第一行作为 sanity check。
-如果它显示出明显掉点，说明管线有问题，后面所有结论都不用看了。
+**How to use it when writing the report**: put D3_gain in the first row of the results table as
+a sanity check. If it shows a noticeable drop, the pipeline is broken and none of the
+conclusions after it are worth reading.
 
 ---
 
-## 两个骨干的真实基线（CORRECTED 配置，seed=42）
+## True baselines for the two backbones (CORRECTED config, seed=42)
 
-源域 SNR (-2,6) dB，n_symbols=128，sps=4，8000 训练样本。
+Source domain SNR (-2,6) dB, n_symbols=128, sps=4, 8000 training samples.
 
-| 域 | CLDNN acc | CLDNN loss | ResNet1D acc | ResNet1D loss |
+| Domain | CLDNN acc | CLDNN loss | ResNet1D acc | ResNet1D loss |
 |---|---|---|---|---|
-| A（源域） | 0.9705 | 0.0972 | 0.9800 | 0.0575 |
+| A (source domain) | 0.9705 | 0.0972 | 0.9800 | 0.0575 |
 | D1_snr (-8,0) | 0.6617 | 1.4585 | 0.7392 | 0.8229 |
 | D2_cfo | 0.4375 | 5.0003 | 0.4767 | 6.4588 |
-| D3_gain（阴性对照） | 0.9650 | 0.1158 | 0.9792 | 0.0570 |
+| D3_gain (negative control) | 0.9650 | 0.1158 | 0.9792 | 0.0570 |
 | D4_phasenoise | 0.5317 | 3.7497 | 0.6333 | 2.9263 |
 | D5_iqimb | 0.9458 | 0.1931 | 0.9308 | 0.1897 |
 
-**关键**：源域 acc 0.97/0.98、loss 0.097/0.058，**都脱离了饱和区**
-（对比：源域 (4,12) dB 时 acc=0.9995、loss=0.0013，敏感性 10 层里 7 层为 0）。
-这是能做敏感性分析的前提。
+**Key point**: source-domain acc 0.97/0.98 and loss 0.097/0.058, **both out of the saturation
+region** (compare: with source domain (4,12) dB, acc=0.9995 and loss=0.0013, and 7 of the 10
+layers are 0). This is the precondition for being able to do a sensitivity
+analysis.
 
-**另一个可写的观察**：ResNet1D 在所有偏移下的源域精度都更高，
-但 D2_cfo 的 loss（6.46）反而比 CLDNN（5.00）更差 ——
-**acc 排序与 loss 排序不一致**，又一次印证"度量口径会改变结论"（发现 2）。
+**Another observation worth writing up**: ResNet1D has the higher source-domain accuracy under
+every shift, yet its D2_cfo loss (6.46) is actually worse than CLDNN's (5.00) --
+**the acc ordering and the loss ordering disagree**, once again confirming that the metric
+definition changes the conclusion (Finding 2).
 
 ---
 
-## 发现 8｜参考位宽是**一阶设计选择**，不是细节
+## Finding 8 | The reference bit width is a **first-order design choice**, not a detail
 
-> **注意**：本节的 ρ 同样是单种子结果。多种子复核（发现 10）显示 ρ 的
-> **符号本身不稳定**，因此下表数值只能读作“该次抽样的一个样本”。
+> **Note**: the rho in this section is likewise a single-seed result. The multi-seed recheck
+> (Finding 10) shows that **the sign itself is unstable**, so the numbers in the table below can
+> only be read as "one sample from that draw".
  
 
-这是做实验过程中冒出来的、**最有可能成为项目核心贡献**的一条。
+This is the item that came up during the experiments and is **the most likely to become a core
+contribution of the project**.
 
-逐层敏感性必须在某一个"参考位宽" b\* 上测量。直觉上 b\* 只是个技术细节。
-实测（CLDNN，10 层，位宽阶梯 [2,3,4,6,8]，`scripts/rank_vs_bits.py`）：
+Per-layer sensitivity has to be measured at some "reference bit width" b\*. Intuitively b\* is
+just a technical detail.
+Measured (CLDNN, 10 layers, bit-width ladder [2,3,4,6,8], `scripts/rank_vs_bits.py`):
 
-| 偏移 | 2b | 3b | 4b | 6b | 8b |
+| Shift | 2b | 3b | 4b | 6b | 8b |
 |---|---|---|---|---|---|
-| **D3_gain**（阴性对照） | +0.988\* | +0.976\* | **+1.000\*** | +0.988\* | +0.952\* |
+| **D3_gain** (negative control) | +0.988\* | +0.976\* | **+1.000\*** | +0.988\* | +0.952\* |
 | D1_snr | +0.600 | +0.248 | **+0.673\*** | **+0.733\*** | -0.055 |
 | **D5_iqimb** | **+0.867\*** | +0.479 | +0.103 | +0.297 | **+0.818\*** |
 | D4_phasenoise | +0.358 | +0.273 | +0.139 | -0.067 | -0.091 |
 | D2_cfo | +0.164 | +0.224 | -0.394 | -0.285 | -0.030 |
 
-（`*` = p < 0.05）
+(`*` = p < 0.05)
 
-### 三个关键观察
+### Three key observations
 
-**① 同一对域，ρ 可以从 +0.87 塌到 +0.10。**
-D5_iqimb 在 2 bit 时 ρ = +0.867（p = 0.0021，高度一致），
-在 4 bit 时 ρ = +0.103（p = 0.78，毫无关系）。
-**只报 4 bit 会得出"敏感性排序不可跨域迁移"；只报 2 bit 会得出"高度可迁移"。
-两者相差一个数量级的解读。**
+**(1) For the same pair of domains, rho can collapse from +0.87 to +0.10.**
+D5_iqimb has rho = +0.867 at 2 bit (p = 0.0021, highly consistent),
+and rho = +0.103 at 4 bit (p = 0.78, no relationship at all).
+**Reporting only 4 bit yields "the sensitivity ranking does not transfer across domains";
+reporting only 2 bit yields "it transfers strongly".
+The two readings differ by an order of magnitude.**
 
-**② 阴性对照在所有位宽下都稳如磐石。**
-D3_gain 在 5 个位宽下 ρ ∈ [0.952, 1.000]，全部显著。
-**这证明位宽依赖不是噪声或 bug** —— 管线在"无偏移"时给出稳定且正确的结果；
-位宽依赖只在**有真实偏移**时才被放大出来。
+**(2) The negative control is rock solid at every bit width.**
+D3_gain has rho in [0.952, 1.000] across the 5 bit widths, all of them significant.
+**This proves the bit-width dependence is not noise or a bug** -- the pipeline gives a stable
+and correct result when there is no shift; the bit-width dependence is only amplified **when
+there is a real shift**.
 
-**③ D5_iqimb 呈 U 形，D4_phasenoise 呈单调下降。**
-两种形状都不像随机波动（随机波动不会在 5 个点上呈现这种结构），
-提示存在真实的"位宽 × 域"交互效应。
+**(3) D5_iqimb is U-shaped and D4_phasenoise decreases monotonically.**
+Neither shape looks like random fluctuation (random fluctuation would not produce this
+structure over 5 points), which suggests a real "bit width x domain" interaction effect.
 
-### 为什么这条重要
+### Why this matters
 
-它把项目的结论从"一个问题一个数字"变成**一张曲面**：
+It turns the project's conclusion from "one number per question" into **a surface**:
 
 ```
-ρ = f(参考位宽 b*, 域偏移类型, 骨干)
+rho = f(reference bit width b*, domain shift type, backbone)
 ```
 
-**任何"ρ 高/低"的断言，如果不附位宽敏感性分析，都是不可辩护的。**
-这同时解决了一个必然会被问到的疑点 ——
-"你凭什么选 4 bit 做参考位宽？"答案不再是一个手选的值，而是一条完整曲线。
+**Any assertion that "rho is high/low" is indefensible if it does not come with a bit-width
+sensitivity analysis.** This also settles a doubt that is bound to be raised --
+"what makes you choose 4 bit as the reference bit width?" The answer is no longer a hand-picked
+value but a complete curve.
 
-### 复现
+### Reproduction
 
 ```bash
-python scripts/rank_vs_bits.py                    # 全部结果
-python scripts/rank_vs_bits.py --backbone cldnn   # 单个骨干
+python scripts/rank_vs_bits.py                    # all results
+python scripts/rank_vs_bits.py --backbone cldnn   # single backbone
 ```
 
-脚本会同时打印每个位宽下的 **唯一值个数**（`#uniq`）——
-并列值过多时秩相关会退化成噪声，这一列就是用来发现那种情况的。
+The script also prints the **number of unique values** (`#uniq`) at each bit width --
+when there are too many tied values the rank correlation degenerates into noise, and that
+column exists to catch exactly that case.
 
-> **诚实补充**：n=10 时 ρ 的置信区间仍然很宽，因此"某个具体 ρ 值"不宜过度解读。
-> 但**"ρ 随位宽改变"这个现象本身**在 5 个位宽上一致出现，
-> 且有阴性对照作为稳定性锚点，因此是可信的。
+> **Honest addition**: at n=10 the confidence interval of rho is still very wide, so "one
+> particular rho value" should not be over-interpreted.
+> But **the phenomenon itself, that rho changes with the bit width**, appears consistently
+> across the 5 bit widths, and with the negative control as a stability anchor, so it is
+> credible.
 
 ---
 
-## 发现 9｜完整实验矩阵：2 骨干 × 5 偏移（含阴性对照）
+## Finding 9 | Full experiment matrix: 2 backbones x 5 shifts (including the negative control)
 
-> **注意**：本节全部 ρ 均为单种子（seed=42）的点估计。三种子复核见发现 10 ——
-> 其中 D4 相位噪声与 D5 IQ 失衡的 ρ **符号发生翻转**。
+> **Note**: every rho in this section is a single-seed (seed=42) point estimate. The three-seed
+> recheck is in Finding 10 -- where the sign of rho **flips** for D4 phase noise and D5 IQ
+> imbalance.
 
 
-`scripts/run_matrix.py` 一次跑完 10 个组合，约 22 分钟（CPU）。
-原始结果：[`results/matrix/matrix.md`](matrix/matrix.md) - [`matrix.csv`](matrix.csv)
+`scripts/run_matrix.py` runs all 10 combinations in one go, about 22 minutes (CPU).
+Raw results: [`results/matrix/matrix.md`](matrix/matrix.md) - [`matrix.csv`](matrix.csv)
 
-| 骨干 | n | 偏移 | Δacc | **ρ(loss)** | p | **域无知代价** | 相对代价 | 排序改变 |
+| Backbone | n | Shift | Delta_acc | **rho(loss)** | p | **Domain-agnostic cost** | Relative cost | Ranking changed |
 |---|---|---|---|---|---|---|---|---|
-| cldnn | 10 | D1_snr | 0.322 | **+0.673\*** | 0.037 | +0.0066 | +14.0% | 是 |
-| cldnn | 10 | D2_cfo | 0.557 | -0.394 | 0.258 | **+0.0678** | +163.3% | 是 |
-| cldnn | 10 | **D3_gain**（对照） | -0.003 | **+1.000\*** | 0.0001 | **+0.0000** | 0.0% | 否 |
-| cldnn | 10 | D4_phasenoise | 0.425 | +0.139 | 0.705 | +0.0304 | +166.3% | 是 |
-| cldnn | 10 | D5_iqimb | 0.013 | +0.103 | 0.785 | +0.0190 | +92.9% | 是 |
-| resnet1d | 16 | D1_snr | 0.246 | +0.329 | 0.213 | +0.0269 | +54.4% | 是 |
-| resnet1d | 16 | D2_cfo | 0.523 | -0.200 | 0.456 | **+0.8031** | +122.0% | 是 |
-| resnet1d | 16 | **D3_gain**（对照） | -0.006 | **+0.579\*** | 0.021 | **+0.0027** | +50.0% | 是 |
-| resnet1d | 16 | D4_phasenoise | 0.355 | -0.179 | 0.501 | +0.4725 | +120.3% | 是 |
-| resnet1d | 16 | D5_iqimb | 0.041 | **+0.635\*** | 0.010 | +0.0016 | +5.9% | 是 |
+| cldnn | 10 | D1_snr | 0.322 | **+0.673\*** | 0.037 | +0.0066 | +14.0% | yes |
+| cldnn | 10 | D2_cfo | 0.557 | -0.394 | 0.258 | **+0.0678** | +163.3% | yes |
+| cldnn | 10 | **D3_gain** (control) | -0.003 | **+1.000\*** | 0.0001 | **+0.0000** | 0.0% | no |
+| cldnn | 10 | D4_phasenoise | 0.425 | +0.139 | 0.705 | +0.0304 | +166.3% | yes |
+| cldnn | 10 | D5_iqimb | 0.013 | +0.103 | 0.785 | +0.0190 | +92.9% | yes |
+| resnet1d | 16 | D1_snr | 0.246 | +0.329 | 0.213 | +0.0269 | +54.4% | yes |
+| resnet1d | 16 | D2_cfo | 0.523 | -0.200 | 0.456 | **+0.8031** | +122.0% | yes |
+| resnet1d | 16 | **D3_gain** (control) | -0.006 | **+0.579\*** | 0.021 | **+0.0027** | +50.0% | yes |
+| resnet1d | 16 | D4_phasenoise | 0.355 | -0.179 | 0.501 | +0.4725 | +120.3% | yes |
+| resnet1d | 16 | D5_iqimb | 0.041 | **+0.635\*** | 0.010 | +0.0016 | +5.9% | yes |
 
-（`*` = p < 0.05。域无知代价 = 按源域敏感性分配相对按目标域分配的额外预测损伤。）
+(`*` = p < 0.05. Domain-agnostic cost = the extra prediction damage from allocating by
+source-domain sensitivity instead of by target-domain sensitivity.)
 
-### 稳健的是什么，不稳健的是什么
+### What is robust and what is not
 
-**① ρ 不稳健 —— 10 个里有 7 个不显著，且跨骨干方向会翻转。**
+**(1) rho is not robust -- 7 of the 10 are not significant, and the direction flips across backbones.**
 
-| 偏移 | cldnn ρ | resnet1d ρ | 方向一致？ |
+| Shift | cldnn rho | resnet1d rho | Same direction? |
 |---|---|---|---|
-| D3_gain | +1.000\* | +0.579\* | [done] 一致且都显著 |
-| D2_cfo | -0.394 | -0.200 | [done] 一致，都不显著 |
-| D1_snr | +0.673\* | +0.329 | [done] 一致，显著性不同 |
-| D4_phasenoise | **+0.139** | **-0.179** | [X] **方向相反** |
-| D5_iqimb | +0.103 | +0.635\* | [done] 一致，显著性不同 |
+| D3_gain | +1.000\* | +0.579\* | [done] consistent and both significant |
+| D2_cfo | -0.394 | -0.200 | [done] consistent, both non-significant |
+| D1_snr | +0.673\* | +0.329 | [done] consistent, significance differs |
+| D4_phasenoise | **+0.139** | **-0.179** | [X] **opposite directions** |
+| D5_iqimb | +0.103 | +0.635\* | [done] consistent, significance differs |
 
-**结论：不能拿单次运行的 ρ 当结论。** 这与发现 8（ρ 还强烈依赖参考位宽）
-叠加后意味着：**"ρ 是多少"这个问题本身问错了**，应当问
-"ρ 在(骨干 × 偏移 × 位宽)这个空间里怎么分布"。
+**Conclusion: the rho of a single run cannot be used as a conclusion.** Combined with Finding 8
+(rho also depends strongly on the reference bit width), this means: **"what is rho?" is itself
+the wrong question**; the question should be "how is rho distributed over the
+(backbone x shift x bit width) space".
 
-**② 域无知代价稳健得多 —— 这才是可以下结论的量。**
+**(2) The domain-agnostic cost is far more robust -- this is the quantity that can carry a conclusion.**
 
-| | D3_gain（阴性对照） | 有真实偏移时 |
+| | D3_gain (negative control) | With a real shift |
 |---|---|---|
-| cldnn | **+0.0000** | +0.0066 ~ +0.0678（全为正） |
-| resnet1d | **+0.0027** | +0.0016 ~ **+0.8031**（全为正） |
+| cldnn | **+0.0000** | +0.0066 ~ +0.0678 (all positive) |
+| resnet1d | **+0.0027** | +0.0016 ~ **+0.8031** (all positive) |
 
-- **阴性对照上正确归零**（0.0000 / 0.0027）—— 没有偏移时，按源域敏感性分配
-  和按目标域分配**等价**，因此"不知道部署域"没有代价。**这证明测量是有效的。**
-- **有真实偏移时在两个骨干上方向完全一致（全为正）**，最大相对代价 166%。
-- 10 个组合里 9 个 `ranking_flipped = True`：源域与目标域的排序确实产生了
-  **不同的位宽分配决策**，而不是"排序变了但决策没变"。
+- **Correctly zeroed on the negative control** (0.0000 / 0.0027) -- with no shift, allocating by
+  source-domain sensitivity and allocating by target-domain sensitivity are **equivalent**, so
+  "not knowing the deployment domain" costs nothing. **This proves the measurement is valid.**
+- **With a real shift the direction is completely consistent across the two backbones (all
+  positive)**, with a maximum relative cost of 166%.
+- 9 of the 10 combinations have `ranking_flipped = True`: the source-domain and target-domain
+  rankings really do produce **different bit-width allocation decisions**, rather than "the
+  ranking changed but the decision did not".
 
-### 项目的最终结论（可以写进报告的一句话）
+### The project's final conclusion (one sentence that can go in the report)
 
-> **不存在域无关的最优比特分配。**
-> 在阴性对照（无有效域偏移）上，"按源域敏感性分配位宽"与"按目标域分配"
-> 完全等价（代价 0.0000 / 0.0027）；一旦出现真实域偏移，代价在两个结构
-> 完全不同的骨干上一致为正，相对损伤最高达 166%。
-> 因此 PTQ 所依赖的"一个通用校准集就足以决定逐层比特分配"这一前提，
-> **在跨域部署的信号任务上不成立**。
+> **There is no domain-independent optimal bit allocation.**
+> On the negative control (no effective domain shift), "allocate bit widths by source-domain
+> sensitivity" and "allocate by target-domain sensitivity" are completely equivalent
+> (cost 0.0000 / 0.0027); once a real domain shift appears, the cost is consistently positive on
+> two structurally completely different backbones, with relative damage up to 166%.
+> Therefore the premise PTQ relies on -- "one generic calibration set is enough to determine the
+> per-layer bit allocation" -- **does not hold for signal tasks deployed across domains**.
 >
-> 同时必须说明：**逐层敏感性的秩相关 ρ 本身不是一个可靠的结论载体** ——
-> 它同时强烈依赖于参考位宽（发现 8）和骨干选择（本发现），
-> 10 个组合中 7 个不显著，且有 1 个跨骨干方向翻转。
+> At the same time it must be stated that **the rank correlation rho of per-layer sensitivity is
+> itself not a reliable vehicle for conclusions** -- it depends strongly on both the reference
+> bit width (Finding 8) and the backbone choice (this finding), 7 of the 10 combinations are not
+> significant, and 1 flips direction across backbones.
 
-**这一段的结构（先给可结论的量、再主动说明不可靠的量）就是防守性写作**：
-审稿人想质疑的每一点都已经写在里面了。
+**The structure of this passage (give the quantifiable quantity first, then volunteer the
+unreliable one) is defensive writing**: every point a reviewer might want to question is
+already written into it.
 
-### 复现
+### Reproduction
 
 ```bash
-# 全流程一键（跳过已完成的，可断点续跑）
+# Full pipeline in one shot (skips finished work, resumable)
 python scripts/run_matrix.py --config configs/base.yaml --skip-existing
 
-# 只看进度
+# Progress only
 python scripts/watch_progress.py
 
-# ρ 的位宽依赖性
+# Bit-width dependence of rho
 python scripts/rank_vs_bits.py
 ```
 
 ---
 
-## 发现 10｜多种子验证：代价稳健，ρ 连符号都不稳
+## Finding 10 | Multi-seed verification: the cost is robust, rho is not even stable in sign
 
-前面发现 8、9 里的 ρ 都是**单种子（seed=42）**的点估计。补跑 seed 43、44 后
-（共 3 个种子 × 2 骨干 × 5 偏移 = 30 个条件），画面变清楚了，而且**部分单种子结论被推翻**。
+The rho values in Findings 8 and 9 above are all **single-seed (seed=42)** point estimates.
+After additionally running seeds 43 and 44 (3 seeds x 2 backbones x 5 shifts = 30 conditions),
+the picture becomes clearer, and **some single-seed conclusions are overturned**.
 
-复现：
+Reproduction:
 
 ```bash
-python scripts/run_seeds.py --seeds 43,44 --skip-existing   # 约 135 分钟（CPU）
-python scripts/aggregate_seeds.py                            # 聚合 + Fisher 合并 p
-python scripts/watch_seeds.py --seeds 43,44                  # 跑的时候看进度
+python scripts/run_seeds.py --seeds 43,44 --skip-existing   # about 135 minutes (CPU)
+python scripts/aggregate_seeds.py                            # aggregation + Fisher combined p
+python scripts/watch_seeds.py --seeds 43,44                  # watch progress while it runs
 ```
 
-完整表格：[`results/multiseed/multiseed.md`](../results/multiseed/multiseed.md)。
+Full table: [`results/multiseed/multiseed.md`](../results/multiseed/multiseed.md).
 
-### 10.1 域无知代价：26/30 为正，参照点正确归零
+### 10.1 Domain-agnostic cost: 26/30 positive, reference point correctly zeroed
 
-| 骨干 | 偏移 | 代价 均值±标准差 | 为正的种子 |
+| Backbone | Shift | Cost mean +/- std | Seeds positive |
 |---|---|---|---|
-| CLDNN | D3 增益（阴性对照） | **0.0039 ± 0.0057** | 2/3 |
-| ResNet1D | D3 增益（阴性对照） | **0.0015 ± 0.0012** | 3/3 |
-| CLDNN | D2 CFO | 0.1240 ± 0.0488 | 3/3 |
-| ResNet1D | D4 相位噪声 | 0.3785 ± 0.1433 | 3/3 |
-| ResNet1D | D2 CFO | **0.6629 ± 0.2092** | 3/3 |
+| CLDNN | D3 gain (negative control) | **0.0039 +/- 0.0057** | 2/3 |
+| ResNet1D | D3 gain (negative control) | **0.0015 +/- 0.0012** | 3/3 |
+| CLDNN | D2 CFO | 0.1240 +/- 0.0488 | 3/3 |
+| ResNet1D | D4 phase noise | 0.3785 +/- 0.1433 | 3/3 |
+| ResNet1D | D2 CFO | **0.6629 +/- 0.2092** | 3/3 |
 
-- 30 个条件里 **26 个为正**；
-- 8 个（骨干 × 偏移）组合中有 6 个是 **3/3 种子全为正**；
-- **阴性对照的代价在两个骨干上都是最小的**；真实偏移最大到 0.66 ± 0.21。
+- **26 of the 30 conditions are positive**;
+- 6 of the 8 (backbone x shift) combinations are **positive for all 3/3 seeds**;
+- **The negative control has the smallest cost on both backbones**; a real shift reaches up to 0.66 +/- 0.21.
 
-"参照点归零 + 真实偏移一致为正"这个模式，比任何单个 ρ 都更值得当结论。
-**这是本项目最稳的一条。**
+The pattern "the reference point zeroes out + real shifts are consistently positive" is more
+worth treating as a conclusion than any single rho.
+**This is the most solid item in the project.**
 
-### 10.2 ρ：符号会随种子翻转（订正发现 8、9）
+### 10.2 rho: the sign flips with the seed (correcting Findings 8 and 9)
 
-三种子均值：
+Three-seed means:
 
-| 骨干 | 偏移 | ρ 均值±标准差 | 显著种子 | Fisher 合并 p |
+| Backbone | Shift | rho mean +/- std | Significant seeds | Fisher combined p |
 |---|---|---|---|---|
-| CLDNN | D1 SNR | +0.778 ± 0.094 | 3/3 | 0.0001 |
-| CLDNN | D3 增益（对照） | +0.802 ± 0.273 | 2/3 | 0.0000 |
-| CLDNN | D2 CFO | −0.576 ± 0.219 | 1/3 | 0.0103 |
-| CLDNN | D4 相位噪声 | −0.200 ± 0.468 | 1/3 | 0.2085 |
-| CLDNN | D5 IQ 失衡 | −0.305 ± 0.432 | 1/3 | 0.1031 |
-| ResNet1D | D3 增益（对照） | +0.590 ± 0.234 | 2/3 | 0.0001 |
-| ResNet1D | D2 CFO | −0.314 ± 0.316 | 1/3 | 0.0479 |
-| ResNet1D | D4 相位噪声 | −0.312 ± 0.347 | 1/3 | 0.0384 |
-| ResNet1D | D5 IQ 失衡 | +0.048 ± 0.580 | 2/3 | 0.0156 |
-| ResNet1D | D1 SNR | +0.311 ± 0.349 | 1/3 | 0.0376 |
+| CLDNN | D1 SNR | +0.778 +/- 0.094 | 3/3 | 0.0001 |
+| CLDNN | D3 gain (control) | +0.802 +/- 0.273 | 2/3 | 0.0000 |
+| CLDNN | D2 CFO | -0.576 +/- 0.219 | 1/3 | 0.0103 |
+| CLDNN | D4 phase noise | -0.200 +/- 0.468 | 1/3 | 0.2085 |
+| CLDNN | D5 IQ imbalance | -0.305 +/- 0.432 | 1/3 | 0.1031 |
+| ResNet1D | D3 gain (control) | +0.590 +/- 0.234 | 2/3 | 0.0001 |
+| ResNet1D | D2 CFO | -0.314 +/- 0.316 | 1/3 | 0.0479 |
+| ResNet1D | D4 phase noise | -0.312 +/- 0.347 | 1/3 | 0.0384 |
+| ResNet1D | D5 IQ imbalance | +0.048 +/- 0.580 | 2/3 | 0.0156 |
+| ResNet1D | D1 SNR | +0.311 +/- 0.349 | 1/3 | 0.0376 |
 
-**订正。**
+**Correction.**
 
-- 发现 9 里写的 "CLDNN × D5 IQ 失衡 ρ=+0.103" 在三种子下变成 **−0.305**；
-- 发现 9 里写的 "CLDNN × D4 相位噪声 ρ=+0.139" 在三种子下变成 **−0.200**。
+- "CLDNN x D5 IQ imbalance rho=+0.103" written in Finding 9 becomes **-0.305** under three seeds;
+- "CLDNN x D4 phase noise rho=+0.139" written in Finding 9 becomes **-0.200** under three seeds.
 
-**符号翻转，不只是幅度变化。** 因此发现 8、9 中所有单种子的 ρ 数值都应被
-理解为"该次抽样的一个样本"，而不是该组合的 ρ 值。
+**The sign flips, not just the magnitude.** Therefore every single-seed rho value in Findings 8
+and 9 should be understood as "one sample from that draw", not as the rho of that combination.
 
-另外，**一半组合的标准差与均值同量级甚至更大**
-（`+0.048 ± 0.580`、`−0.200 ± 0.468`、`−0.305 ± 0.432`）。
-误差棒大于均值一个量级的量，不能作为结论载体。
+Also, **for half the combinations the standard deviation is the same order of magnitude as the
+mean or larger**
+(`+0.048 +/- 0.580`, `-0.200 +/- 0.468`, `-0.305 +/- 0.432`).
+A quantity whose error bar exceeds its mean by an order of magnitude cannot be a vehicle for
+conclusions.
 
-### 10.3 Fisher 合并能找回被单次实验掩盖的效应
+### 10.3 Fisher combination recovers effects masked by a single run
 
-CLDNN × D2 CFO 单看只有 1/3 种子显著，合并后 **p = 0.0103**；
-ResNet1D × D2 CFO 同样 1/3，合并后 **p = 0.0479**。
+CLDNN x D2 CFO looks like only 1/3 seeds significant on its own, but after combination
+**p = 0.0103**; ResNet1D x D2 CFO is likewise 1/3, and after combination **p = 0.0479**.
 
-这说明"单次不显著"不等于"没有效应"，n=10~16 层时统计功效本来就低。
-**报告里应当主报 Fisher 合并 p，而不是逐个种子的 p。**
+This shows that "not significant in a single run" does not mean "no effect"; at n=10~16 layers
+the statistical power is inherently low.
+**The report should lead with the Fisher combined p, not the per-seed p.**
 
-### 10.4 这一节改变了报告的写法
+### 10.4 This section changes how the report has to be written
 
-| 之前（单种子） | 现在（三种子） |
+| Before (single seed) | Now (three seeds) |
 |---|---|
-| ρ = +0.673（p=0.037），排序中度一致 | ρ = +0.778 ± 0.094，3/3 显著，Fisher p = 0.0001 |
-| ρ = +0.103（p=0.785），排序几乎不相关 | ρ = **−0.305 ± 0.432**，符号与单种子相反 |
-| 域无知代价 0.0066 | 0.0069 ± 0.0070（均值小于标准差，实际接近零） |
-| "两个骨干上一致为正" | **26/30 为正**，阴性对照最小 —— 这数字才站得住 |
+| rho = +0.673 (p=0.037), ranking moderately consistent | rho = +0.778 +/- 0.094, 3/3 significant, Fisher p = 0.0001 |
+| rho = +0.103 (p=0.785), ranking almost uncorrelated | rho = **-0.305 +/- 0.432**, sign opposite to the single seed |
+| Domain-agnostic cost 0.0066 | 0.0069 +/- 0.0070 (mean smaller than the standard deviation, effectively near zero) |
+| "consistently positive on both backbones" | **26/30 positive**, smallest for the negative control -- this is the number that holds up |
 
-**结论**：把"ρ 是多少"换成"代价在多少条件下为正、Fisher 合并 p 是多少"。
+**Conclusion**: replace "what is rho" with "under how many conditions is the cost positive, and
+what is the Fisher combined p".
 
 ---
-## 验证状态（已更新：torch 侧已实机跑通）
+## Verification status (updated: the torch side has been run for real)
 
-### [done] 已实际执行并通过
+### [done] Actually executed and passing
 
-| 内容 | 脚本 | 结果 |
+| Item | Script | Result |
 |---|---|---|
-| 量化数学、秩相关、等误差臂 | `tests/test_quant_core.py` | **70/70 项通过**（含与 `scipy.stats.spearmanr` 的交叉验证） |
-| 端到端管线（numpy） | `tests/smoke_pipeline.py` | 通过，约 7s |
-| 表示问题诊断 | `tests/diagnose_data.py` | 通过 |
-| 特征可分性 | `tests/diagnose_features.py` | 通过 |
-| 难度区间与 CFO 实验 | `tests/diagnose_regime.py` | 通过 |
-| 配置解析（含 mini-YAML 回退） | 手动核验 | 通过（修掉一个嵌套内联解析 bug） |
-| **CLDNN 训练 + 多域评估** | `scripts/train_baseline.py` | **通过**，8.4 分钟，早停第 21 轮 |
-| **ResNet1D 训练 + 多域评估** | `scripts/train_baseline.py` | **通过**，早停第 27 轮 |
-| **逐层敏感性 + ρ + 置换检验** | `scripts/run_sensitivity.py` | **通过**（10 层 × 5 位宽 × 2 域） |
-| **等重构误差三臂** | `scripts/run_equal_error.py` | 通过 |
-| **图表生成** | `scripts/make_figures.py` | 通过，PNG 已渲染 |
-| **多种子实验（3 种子 × 2 骨干 × 5 偏移）** | `scripts/run_seeds.py` | **通过**，44/44 单元，135 分钟 |
-| **跨种子聚合（均值±标准差 + Fisher 合并）** | `scripts/aggregate_seeds.py` | **通过** |
-| 全部 36 个 .py 的语法 | `py_compile` | 0 失败 |
+| Quantization math, rank correlation, equal-error arms | `tests/test_quant_core.py` | **70/70 passed** (including cross-validation against `scipy.stats.spearmanr`) |
+| End-to-end pipeline (numpy) | `tests/smoke_pipeline.py` | passes, about 7s |
+| Representation-problem diagnosis | `tests/diagnose_data.py` | passes |
+| Feature separability | `tests/diagnose_features.py` | passes |
+| Difficulty regime and CFO experiment | `tests/diagnose_regime.py` | passes |
+| Config parsing (including the mini-YAML fallback) | manual check | passes (fixed one nested-inline parsing bug) |
+| **CLDNN training + multi-domain evaluation** | `scripts/train_baseline.py` | **passes**, 8.4 minutes, early stop at epoch 21 |
+| **ResNet1D training + multi-domain evaluation** | `scripts/train_baseline.py` | **passes**, early stop at epoch 27 |
+| **Per-layer sensitivity + rho + permutation test** | `scripts/run_sensitivity.py` | **passes** (10 layers x 5 bit widths x 2 domains) |
+| **Three equal-reconstruction-error arms** | `scripts/run_equal_error.py` | passes |
+| **Figure generation** | `scripts/make_figures.py` | passes, PNGs rendered |
+| **Multi-seed experiment (3 seeds x 2 backbones x 5 shifts)** | `scripts/run_seeds.py` | **passes**, 44/44 units, 135 minutes |
+| **Cross-seed aggregation (mean +/- std + Fisher combination)** | `scripts/aggregate_seeds.py` | **passes** |
+| Syntax of all 36 .py files | `py_compile` | 0 failures |
 
-环境：Python 3.13.5 + torch 2.14.1+cpu + scipy 1.18.1 + sklearn 1.9.1 + matplotlib 3.11.2，
-全部安装在项目内的 `.venv`（不污染系统 Python）。
+Environment: Python 3.13.5 + torch 2.14.1+cpu + scipy 1.18.1 + sklearn 1.9.1 + matplotlib 3.11.2,
+all installed in the project-local `.venv` (it does not pollute the system Python).
 
-###  归档的失败案例
+###  Archived failure case
 
-`results/figures/_saturated_example/` 保存了**源域饱和时**的图表与 JSON：
+`results/figures/_saturated_example/` keeps the figures and JSON from **when the source domain
+was saturated**:
 
-- `fig1_sensitivity_heatmap.png` —— 左图（源域）几乎全黑，Δloss ≈ 0；
-  右图（目标域）才亮起来。**这是"源域饱和导致敏感性退化"的完美可视化**，
-  可以直接放进报告说明为什么必须控制难度。
-- `rank_cldnn_D1_snr.json` —— 源域敏感性向量为
-  `[7e-05, 0.0014, 0.0004, 1e-05, 0, 0, -0, -0, -0, -2e-05]`，
-  10 层里 7 层为 0，acc 口径只有 2 个不同值。
+- `fig1_sensitivity_heatmap.png` -- the left panel (source domain) is almost entirely black,
+  Delta_loss ~ 0; only the right panel (target domain) lights up. **This is a perfect
+  visualization of "source-domain saturation degrading sensitivity"**, and it can go straight
+  into the report to explain why the difficulty has to be controlled.
+- `rank_cldnn_D1_snr.json` -- the source-domain sensitivity vector is
+  `[7e-05, 0.0014, 0.0004, 1e-05, 0, 0, -0, -0, -0, -2e-05]`,
+  7 of the 10 layers are 0, and the acc metric has only 2 distinct values.
 
-**保留一个失败案例是有价值的**：它让"我们做了难度控制"从一句声明变成有据可查的操作。
+**Keeping a failure case around is worth it**: it turns "we did control the difficulty" from a
+claim into a documented operation.
 
 ---
 
-## 这三条发现对写报告的价值
+## What these three findings are worth for the report
 
-它们不是"踩坑记录"，而是**可以直接写进报告的三节内容**：
+They are not a "list of pitfalls" but **three sections that can go straight into the report**:
 
-1. **输入表示的选择是一阶决策**（发现 1）——
-   不是"我选了累积量"，而是"我测量了原始 IQ 与累积量在可学习性上的差异"。
-2. **评价指标会改变结论**（发现 2）——
-   loss 口径与 acc 口径给出 ρ = +0.71 与 +0.51。
-   报告里同时给出两者，并解释饱和机制，比只报一个数字严谨得多。
-3. **域偏移强度是表示相关的**（发现 3）——
-   这一条最有可能成为"别人没做过"的结论，因为它把
-   "哪个域偏移最致命"从断言变成了可测量的量。
+1. **The choice of input representation is a first-order decision** (Finding 1) --
+   not "I chose cumulants" but "I measured the difference in learnability between raw IQ and
+   cumulants".
+2. **The evaluation metric changes the conclusion** (Finding 2) --
+   the loss metric and the acc metric give rho = +0.71 and +0.51.
+   Giving both in the report and explaining the saturation mechanism is far more rigorous than
+   reporting a single number.
+3. **Domain shift strength is representation-dependent** (Finding 3) --
+   this is the one most likely to become a "nobody has done this" conclusion, because it turns
+   "which domain shift is most fatal" from an assertion into a measurable quantity.
 
-**这三节都不需要新模型、不需要新的 SOTA、不需要自采数据。**
-它们来自把对照实验做干净。
+**None of these three sections needs a new model, a new SOTA, or self-collected data.**
+They come from doing the control experiments cleanly.

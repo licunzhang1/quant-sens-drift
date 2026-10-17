@@ -1,21 +1,26 @@
-"""ρ 对**参考位宽**的依赖性分析。
+"""How rho depends on the **reference bit width**.
 
-为什么需要它
-------------
-逐层敏感性是在某一个"参考位宽" b* 上测量的。b* 选得不好会毁掉秩分析：
+Why this is needed
+------------------
+The per-layer sensitivity is measured at some "reference bit width" b*. A badly
+chosen b* ruins the rank analysis:
 
-* b* 太大（如 8 bit）→ 几乎每一层的 Δloss 都 ≈ 0 → **大量并列值** →
-  秩相关由近似随机的微小差异决定；
-* b* 太小（如 2 bit）→ 所有层都严重退化 → 差异被压缩、同样难分；
-* 中间某一档才可能给出有区分度的排序。
+* b* too large (e.g. 8 bit) -> the Delta loss of nearly every layer is ~= 0 ->
+  **many tied values** -> the rank correlation is decided by tiny, essentially
+  random differences;
+* b* too small (e.g. 2 bit) -> every layer degrades badly -> the differences get
+  compressed and are equally hard to separate;
+* only some intermediate rung is likely to give a ranking with real resolution.
 
-实测（CLDNN, D4_phasenoise）：参考位宽 4 bit 时 ρ=+0.139 (p=0.71)，
-但域间隙其实很大（acc 0.965→0.540）。这说明"ρ 低"可能只是位宽选得不好，
-而不是"排序真的不可迁移"。**这两种解释的结论完全相反**，必须区分开。
+Measured (CLDNN, D4_phasenoise): at reference bit width 4 bit, rho=+0.139
+(p=0.71), yet the domain gap is actually large (acc 0.965 -> 0.540). So a "low
+rho" may just mean the bit width was chosen badly, rather than that "the ranking
+really does not transfer". **These two explanations lead to opposite
+conclusions** and must be told apart.
 
-用法
-----
-    python scripts/rank_vs_bits.py                      # 扫描 results/sensitivity 下全部结果
+Usage
+-----
+    python scripts/rank_vs_bits.py                      # scan every result under results/sensitivity
     python scripts/rank_vs_bits.py --shift D4_phasenoise
 """
 
@@ -46,23 +51,37 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.analysis.rank_corr import analyse_pair  # noqa: E402
+from src.utils import discover_seed_roots  # noqa: E402
 from src.utils import dump_json  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--backbone", default=None, help="只看某个骨干；默认全部")
-    ap.add_argument("--shift", default=None, help="只看某个偏移；默认全部")
+    ap.add_argument("--backbone", default=None,
+                    help="only look at one backbone; defaults to all")
+    ap.add_argument("--shift", default=None, help="only look at one shift; defaults to all")
     ap.add_argument("--n-permutations", type=int, default=20000)
-    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--seed", type=int, default=None,
+                    help="which seed's results to analyse; default: the highest available")
     ap.add_argument("--outdir", default="results/rank_vs_bits")
     args = ap.parse_args()
 
-    sens_dir = ROOT / "results" / "sensitivity"
+    results_dir = ROOT / "results"
+    seed = args.seed
+    if seed is None:
+        roots = discover_seed_roots(results_dir)
+        if not roots:
+            print(f"no results under {results_dir}; run scripts/run_sensitivity.py first")
+            return 2
+        seed = max(roots)
+    sens_dir = results_dir / f"seed{seed}" / "sensitivity"
+    if not sens_dir.is_dir():
+        sens_dir = results_dir / "sensitivity"   # flat fallback
     files = sorted(sens_dir.glob("sens_*.npz"))
     if not files:
-        print(f"没找到 {sens_dir}/sens_*.npz，请先跑 scripts/run_sensitivity.py")
+        print(f"no sens_*.npz under {sens_dir}; run scripts/run_sensitivity.py first")
         return 2
+    print(f"analysing seed {seed}: {sens_dir.relative_to(ROOT)}")
 
     rows = []
     for f in files:
@@ -80,7 +99,8 @@ def main() -> int:
         da_a, da_b = z["delta_acc_a"], z["delta_acc_b"]
 
         print(f"\n{'=' * 78}")
-        print(f"  {backbone} × {shift}   层数 n={len(layer_names)}   位宽阶梯 {ladder}")
+        print(f"  {backbone} x {shift}   layers n={len(layer_names)}   "
+              f"bit ladder {ladder}")
         print(f"{'=' * 78}")
         print(f"  {'ref_bits':>8} | {'rho_loss':>9} {'p_loss':>8} "
               f"{'#uniq_A':>8} {'#uniq_B':>8} | {'rho_acc':>8} {'p_acc':>8}")
@@ -93,13 +113,16 @@ def main() -> int:
             na, nb = int(np.unique(sa).size), int(np.unique(sb).size)
             ta_u, tb_u = int(np.unique(ta).size), int(np.unique(tb).size)
 
+            # `seed` here is the RNG seed for the permutation test, which is
+            # a different thing from the seed directory being analysed.
+            rng_seed = seed if isinstance(seed, int) else 42
             rl = analyse_pair(sa, sb, n_permutations=args.n_permutations,
-                              seed=args.seed, n_boot=0)
+                              seed=rng_seed, n_boot=0)
             ra = analyse_pair(ta, tb, n_permutations=args.n_permutations,
-                              seed=args.seed, n_boot=0)
+                              seed=rng_seed, n_boot=0)
 
-            # 并列太多时 ρ 不可信，标出来
-            tie_flag = "  <-- 并列过多" if (na < len(layer_names) * 0.8
+            # too many ties makes rho unreliable; flag it
+            tie_flag = "  <-- too many ties" if (na < len(layer_names) * 0.8
                                             or nb < len(layer_names) * 0.8) else ""
             print(f"  {b:>8} | {rl.rho:>+9.4f} {rl.p_value:>8.4f} "
                   f"{na:>8} {nb:>8} | {ra.rho:>+8.4f} {ra.p_value:>8.4f}{tie_flag}")
@@ -116,22 +139,23 @@ def main() -> int:
                 "verdict_loss": rl.verdict(),
             })
 
-        # 给出该组合下"最可信"的参考位宽：并列最少且灵敏度最高
+        # report the most trustworthy reference bit width for this combo:
+        # fewest ties and the largest effect
         sub = [r for r in rows if r["backbone"] == backbone and r["shift"] == shift]
         if sub:
             best = max(sub, key=lambda r: (min(r["n_unique_loss_A"], r["n_unique_loss_B"]),
                                            abs(r["rho_loss"])))
-            print(f"\n  并列最少的参考位宽 = {best['ref_bits']} bit  "
-                  f"(唯一值 A={best['n_unique_loss_A']}, B={best['n_unique_loss_B']}, "
-                  f"ρ={best['rho_loss']:+.4f}, p={best['p_loss']:.4f})")
+            print(f"\n  reference bit width with fewest ties = {best['ref_bits']} bit  "
+                  f"(unique A={best['n_unique_loss_A']}, B={best['n_unique_loss_B']}, "
+                  f"rho={best['rho_loss']:+.4f}, p={best['p_loss']:.4f})")
 
     if not rows:
-        print("没有匹配的结果。")
+        print("no matching results.")
         return 1
 
-    # ---------------------------------------------------------------- 汇总
+    # ---------------------------------------------------------------- summary
     print(f"\n{'=' * 78}")
-    print("  汇总：每个 (骨干, 偏移) 在各参考位宽下的 ρ(loss)")
+    print("  summary: rho(loss) for each (backbone, shift) at every reference bit width")
     print(f"{'=' * 78}")
     keys = sorted({(r["backbone"], r["shift"]) for r in rows})
     ladder_all = sorted({r["ref_bits"] for r in rows})
@@ -150,15 +174,19 @@ def main() -> int:
             else:
                 line += f"{'-':>10}"
         print(line)
-    print("\n  * 表示 p < 0.05。空位表示该位宽不在该组合的阶梯里。")
+    print("\n  * marks p < 0.05. A blank means that bit width is not in this "
+          "combo's ladder.")
 
     out = dump_json(ROOT / args.outdir / "rank_vs_bits.json", {
         "n_permutations": args.n_permutations, "seed": args.seed, "rows": rows,
     })
-    print(f"\n  已写入 {out}")
-    print("\n  [!] 读法：若不同参考位宽给出的 ρ 差异很大（例如 4b 是 +0.14、2b 是 +0.7），")
-    print("    说明**参考位宽本身是一个需要论证的设计选择**，")
-    print("    必须在报告里说明为什么选它，并给出对位宽的敏感性分析。")
+    print(f"\n  wrote {out}")
+    print("\n  [!] How to read this: if different reference bit widths give very"
+          " different rho values (say +0.14 at 4b but +0.7 at 2b),")
+    print("    then **the reference bit width is itself a design choice that needs"
+          " to be justified**,")
+    print("    and the report must say why it was chosen and include a sensitivity"
+          " analysis over the bit width.")
     return 0
 
 

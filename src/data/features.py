@@ -1,29 +1,35 @@
-"""经典 AMC 特征：高阶累积量 + 包络统计。
+"""Classical AMC features: higher-order cumulants plus envelope statistics.
 
-为什么项目里需要它
-------------------
-两个用途，一次实现：
+Why the project needs them
+--------------------------
+Two uses, one implementation:
 
-1. **参考模型的输入表示**（``tests/smoke_pipeline.py``）。
-   原始 IQ 波形里，调制方式的信息藏在**分布**里而不是某几个采样点上，
-   普通 MLP 很难自己学出来（实测：训练 1.0 / 测试 0.50，只有 BPSK 能分）。
-   换成累积量特征后模型能真正泛化，"域间隙"才有意义。
+1. **Input representation of the reference model** (``tests/smoke_pipeline.py``).
+   In a raw IQ waveform the modulation information lives in the **distribution**
+   rather than at a few sample points, and a plain MLP struggles to learn it on
+   its own (measured: 1.0 train / 0.50 test, with only BPSK separable).
+   With cumulant features the model generalises properly, and only then does the
+   "domain gap" mean anything.
 
-2. **经典 DSP 基线臂**（研究设计里的切口 2）。
-   回答"深度学习到底比传统方法强多少"——这个问题在文献里被大量宣称，
-   但很少有人用**同样严格的划分协议**去比。
+2. **Classical DSP baseline arm** (cut 2 in the study design).
+   It answers "how much better is deep learning than the classical approach" --
+   a question the literature asserts widely but rarely tests with an **equally
+   strict split protocol**.
 
-累积量定义（复数随机变量 z，零均值）
------------------------------------
+Cumulant definitions (complex random variable z, zero mean)
+-----------------------------------------------------------
 C20 = E[z^2]
 C21 = E[|z|^2]
-C40 = E[z^4] - 3·E[z^2]^2
-C41 = E[z^3z*] - 3·E[z^2]·E[|z|^2]
-C42 = E[|z|^4] - |E[z^2]|^2 - 2·E[|z|^2]^2
-C60 = E[z^6] - 15·E[z^2]E[z^4] + 30·E[z^2]^3
-C63 = E[|z|^6] - 9·E[|z|^4]E[|z|^2] - 6·E[z^2*]... （见实现，采用常用的近似形式）
+C40 = E[z^4] - 3*E[z^2]^2
+C41 = E[z^3 z*] - 3*E[z^2]*E[|z|^2]
+C42 = E[|z|^4] - |E[z^2]|^2 - 2*E[|z|^2]^2
+C60 = E[z^6] - 15*E[z^2]E[z^4] + 30*E[z^2]^3
+C63 = E[|z|^6] - 9*E[|z|^4]E[|z|^2] - 6*E[z^2*]... (see the implementation, which
+      uses the common approximate form)
 
-这些量对星座形状敏感，且天然对旋转/尺度有一定不变性，是经典 AMC 的标准特征。
+These quantities are sensitive to the constellation shape and naturally have
+some invariance to rotation and scale, which makes them the standard classical
+AMC features.
 """
 
 from __future__ import annotations
@@ -59,7 +65,10 @@ def feature_dim() -> int:
 
 
 def _phase_entropy(z: np.ndarray, n_bins: int = 16) -> float:
-    """相位直方图熵（归一化到 [0,1]）。BPSK 的相位分布最集中。"""
+    """Phase-histogram entropy (normalized to [0, 1]).
+
+    BPSK has the most concentrated phase distribution.
+    """
     ph = np.angle(z)
     hist, _ = np.histogram(ph, bins=n_bins, range=(-np.pi, np.pi))
     p = hist.astype(np.float64)
@@ -95,18 +104,19 @@ def _skew(v: np.ndarray) -> float:
 
 
 def amc_features(x: np.ndarray) -> np.ndarray:
-    """把 ``(N, 2, L)`` 的 IQ 批量转成 ``(N, F)`` 特征矩阵。
+    """Turn a ``(N, 2, L)`` IQ batch into an ``(N, F)`` feature matrix.
 
-    ``L`` 方向上的所有采样点都参与统计（脉压相关使它们非独立，
-    但经验累积量仍然具有判别力——这是经典 AMC 的常规做法）。
+    Every sample point along ``L`` takes part in the statistics (pulse-shaping
+    correlation makes them dependent, but the empirical cumulants still
+    discriminate -- this is standard practice in classical AMC).
     """
     x = np.asarray(x, dtype=np.float64)
     if x.ndim != 3 or x.shape[1] != 2:
-        raise ValueError(f"输入应为 (N, 2, L)，收到 {x.shape}")
+        raise ValueError(f"input should be (N, 2, L), got {x.shape}")
     n = x.shape[0]
     z = x[:, 0, :] + 1j * x[:, 1, :]  # (N, L)
 
-    # 每个样本各自归一化到单位功率，保证尺度不变
+    # normalize each sample to unit power individually for scale invariance
     p = np.mean(np.abs(z) ** 2, axis=1, keepdims=True)
     z = z / np.sqrt(np.maximum(p, _EPS))
 

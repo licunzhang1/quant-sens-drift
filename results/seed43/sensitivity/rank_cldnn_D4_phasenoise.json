@@ -89,7 +89,7 @@
       "ci_high": -0.1523,
       "tau_b": -0.5556,
       "significant": true,
-      "verdict": "ρ=-0.733（p=0.021）：排序反转 → 跨域复用会主动损害性能"
+      "verdict": "rho=-0.733 (p=0.021): rankings reversed -> reusing them across domains actively hurts performance"
     },
     "acc": {
       "n_layers": 10,
@@ -99,7 +99,7 @@
       "ci_high": 0.031,
       "tau_b": -0.5276,
       "significant": true,
-      "verdict": "ρ=-0.678（p=0.0364）：排序反转 → 跨域复用会主动损害性能"
+      "verdict": "rho=-0.678 (p=0.0364): rankings reversed -> reusing them across domains actively hurts performance"
     }
   },
   "elapsed_s": 195.83

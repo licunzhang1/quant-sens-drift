@@ -1,19 +1,24 @@
-"""W11–W12：等重构误差臂 —— 三臂对比。
+"""W11-W12: equal reconstruction error arms -- a three-arm comparison.
 
     python scripts/run_equal_error.py --config configs/base.yaml --shift D1_snr
 
-读取 ``results/sensitivity/sens_<backbone>_<shift>.npz``（由 run_sensitivity.py 产出）
-与骨干权重，计算逐层重构误差曲线 ε_l(b)，跑三臂：
+Reads ``results/sensitivity/sens_<backbone>_<shift>.npz`` (produced by
+run_sensitivity.py) plus the backbone weights, computes the per-layer
+reconstruction error curve eps_l(b), and runs three arms:
 
-    uniform   所有层同位宽
-    agnostic  用**源域**敏感性分配       ← 现实中你能做的（你只知道训练域）
-    oracle    用**目标域**敏感性分配     ← 不可实现，是上界
+    uniform   the same bit width for every layer
+    agnostic  allocate by **source-domain** sensitivity
+              <- what you can actually do (you only know the training domain)
+    oracle    allocate by **target-domain** sensitivity
+              <- not realizable; it is the upper bound
 
-两个关键差值：
-    agnostic - uniform   敏感性引导到底有没有用
-    oracle  - agnostic   **"不知道部署域"的代价** ← 本项目的核心量
+Two key differences:
+    agnostic - uniform   does sensitivity guidance help at all
+    oracle  - agnostic    **the cost of not knowing the deployment domain**
+                         <- the core quantity of this project
 
-若后者不可忽略，就得到干净的反例：**不存在域无关的最优比特分配**。
+If the latter is not negligible we get a clean counterexample: **no
+domain-independent optimal bit allocation exists**.
 """
 
 from __future__ import annotations
@@ -47,7 +52,7 @@ sys.path.insert(0, str(ROOT))
 from src.analysis.equal_error import run_equal_error_arm  # noqa: E402
 from src.analysis.proxies import correlate_with_sensitivity, proxy_matrix  # noqa: E402
 from src.quant.core import quant_error_curve  # noqa: E402
-from src.utils import dump_json  # noqa: E402
+from src.utils import dump_json, find_result_file  # noqa: E402
 
 
 def main() -> int:
@@ -55,11 +60,12 @@ def main() -> int:
     ap.add_argument("--config", default="configs/base.yaml")
     ap.add_argument("--shift", default=None)
     ap.add_argument("--backbone", default=None)
-    ap.add_argument("--sens", default=None, help="直接指定 sens_*.npz")
-    ap.add_argument("--ckpt", default=None, help="骨干权重路径（默认 results/baseline/<name>.pt）")
+    ap.add_argument("--sens", default=None, help="path to a sens_*.npz file")
+    ap.add_argument("--ckpt", default=None,
+                    help="backbone checkpoint path (default results/baseline/<name>.pt)")
     ap.add_argument("--outdir", default="results/equal_error")
     ap.add_argument("--seed", type=int, default=None,
-                    help="覆盖 config 里的 seed（多种子实验用）")
+                    help="override the seed from the config (used by the multi-seed runs)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -71,9 +77,15 @@ def main() -> int:
     shifts = list((cfg["data"].get("shifts") or {}).keys())
     shift = args.shift or (shifts[0] if shifts else None)
 
-    sens_path = pathlib.Path(args.sens or f"results/sensitivity/sens_{name}_{shift}.npz")
+    sens_path = (pathlib.Path(args.sens) if args.sens
+                 else find_result_file(ROOT / "results", "sensitivity",
+                                       f"sens_{name}_{shift}.npz"))
+    if sens_path is None:
+        print(f"no sens_{name}_{shift}.npz found under results/; "
+              "run scripts/run_sensitivity.py first")
+        return 2
     if not sens_path.exists():
-        print(f"找不到 {sens_path}，请先跑 scripts/run_sensitivity.py")
+        print(f"{sens_path} not found; run scripts/run_sensitivity.py first")
         return 2
     z = np.load(sens_path, allow_pickle=True)
     layer_names = [str(s) for s in z["layer_names"]]
@@ -85,13 +97,13 @@ def main() -> int:
     s_src = delta_loss_a[:, idx]
     s_tgt = delta_loss_b[:, idx]
 
-    print(f"[run_equal_error] {name}  目标域={shift}  层数={len(layer_names)}  "
-          f"参考位宽={ref_bits}")
+    print(f"[run_equal_error] {name}  target={shift}  layers={len(layer_names)}  "
+          f"reference_bits={ref_bits}")
 
-    # ---------------------------------------------------------------- 误差曲线
+    # ---------------------------------------------------------------- error curves
     ckpt = pathlib.Path(args.ckpt or f"results/baseline/{name}.pt")
     if not ckpt.exists():
-        print(f"找不到权重 {ckpt}")
+        print(f"checkpoint {ckpt} not found")
         return 2
     blob = torch.load(ckpt, map_location="cpu", weights_only=False)
     model = build_model(cfg, n_classes=int(blob.get("n_classes", 4)))
@@ -105,7 +117,7 @@ def main() -> int:
     modules = dict(model.named_modules())
     for i, nm in enumerate(layer_names):
         if nm not in modules or getattr(modules[nm], "weight", None) is None:
-            raise KeyError(f"模型中没有可量化权重层 {nm!r}")
+            raise KeyError(f"no quantizable weight layer {nm!r} in the model")
         W = modules[nm].weight.detach().cpu().numpy().astype(np.float64)
         tensors[nm] = W
         costs[i] = W.size
@@ -113,35 +125,36 @@ def main() -> int:
         for j, b in enumerate(ladder):
             err[i, j] = curve[b]["nmse"]
 
-    print("\n  逐层 NMSE ε_l(b)")
+    print("\n  per-layer NMSE eps_l(b)")
     print("    {:<34s}".format("layer") + "".join(f"{b:>10d}b" for b in ladder))
     for i, nm in enumerate(layer_names):
         print("    {:<34s}".format(nm[:32])
               + "".join(f"{err[i, j]:>11.5f}" for j in range(len(ladder))))
 
-    # ---------------------------------------------------------------- 三臂
+    # ---------------------------------------------------------------- three arms
     ecfg = cfg.get("equal_error", {})
     ratio = float(ecfg.get("total_bit_budget", 0.8))
     w_by_params = bool(ecfg.get("weight_by_params", True))
     costs_use = costs if w_by_params else np.ones_like(costs)
 
-    print(f"\n  预算占比={ratio}  按参数量加权={w_by_params}")
+    print(f"\n  budget ratio={ratio}  weighted by param count={w_by_params}")
     rows_all = []
     for r in (0.4, 0.6, 0.8):
         arm = run_equal_error_arm(s_src, s_tgt, err, ladder, budget_ratio=r,
                                   layer_costs=costs_use, layer_names=layer_names,
                                   source_domain="A", target_domain=shift)
-        print(f"\n  --- 预算 {r} ---")
+        print(f"\n  --- budget {r} ---")
         print("    {:<20s}{:<30s}{:>16s}".format("arm", "bits", "pred_damage"))
-        for tag2, a in (("uniform", arm.uniform), ("agnostic(源)", arm.agnostic),
-                        ("oracle(目标)", arm.oracle)):
+        for tag2, a in (("uniform", arm.uniform), ("agnostic(source)", arm.agnostic),
+                        ("oracle(target)", arm.oracle)):
             print("    {:<20s}{:<30s}{:>16.8f}".format(
                 tag2, str(a.bits.tolist()), a.predicted_damage))
-        print(f"    敏感性引导收益 (uniform-agnostic) = {arm.gain_from_sensitivity:+.8f}")
-        print(f"    **域无知代价**  (agnostic-oracle)  = {arm.cost_of_domain_ignorance:+.8f}"
-              f"   相对 {arm.relative_cost_of_ignorance:+.1%}")
-        print(f"    排序改变决策: {arm.ranking_flipped}")
-        print(f"    结论: {arm.verdict()}")
+        print(f"    sensitivity gain (uniform-agnostic) = {arm.gain_from_sensitivity:+.8f}")
+        print(f"    **cost of domain ignorance** (agnostic-oracle) "
+              f"= {arm.cost_of_domain_ignorance:+.8f}"
+              f"   relative {arm.relative_cost_of_ignorance:+.1%}")
+        print(f"    ranking flips the decision: {arm.ranking_flipped}")
+        print(f"    verdict: {arm.verdict()}")
         rows_all.append({"budget_ratio": r, **{
             k: v for k, v in {
                 "uniform_bits": arm.uniform.bits, "agnostic_bits": arm.agnostic.bits,
@@ -155,14 +168,14 @@ def main() -> int:
                 "ranking_flipped": arm.ranking_flipped, "verdict": arm.verdict(),
             }.items()}})
 
-    # ---------------------------------------------------------------- 代理量
-    print("\n  代理量 vs 目标域敏感性（|ρ| 降序）")
+    # ---------------------------------------------------------------- proxies
+    print("\n  proxies vs target-domain sensitivity (|rho| descending)")
     prox, _ = proxy_matrix(tensors, bits=ref_bits)
     n_perm = int(cfg.get("rank", {}).get("n_permutations", 10000))
     pres = correlate_with_sensitivity(prox, s_tgt, n_permutations=n_perm,
                                       seed=int(cfg.get("seed", 42)))
     for r in pres:
-        print(f"    {r['proxy']:<14s} ρ={r['rho']:+.4f}  p={r['p_value']:.4f}"
+        print(f"    {r['proxy']:<14s} rho={r['rho']:+.4f}  p={r['p_value']:.4f}"
               + ("  *" if r["significant"] else ""))
 
     outdir = pathlib.Path(args.outdir)
@@ -174,7 +187,7 @@ def main() -> int:
         "err_curves": err, "layer_costs": costs, "weighted_by_params": w_by_params,
         "arms": rows_all, "proxies": pres,
     })
-    print(f"\n  已写入 {out}")
+    print(f"\n  wrote {out}")
     return 0
 
 

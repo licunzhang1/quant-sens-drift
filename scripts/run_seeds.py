@@ -1,29 +1,30 @@
-"""多种子实验编排。
+"""Multi-seed experiment orchestration.
 
-为什么需要它
-------------
-单一种子的结果只是点估计。要以"均值 ± 标准差"的形式报告，必须跑多个随机种子。
-层数只有 10~16 时 ρ 的抽样方差本来就大，不给误差棒的结论站不住。
+Why it is needed
+----------------
+A single seed only gives a point estimate. Reporting a "mean +/- std" requires
+several random seeds. At 10~16 layers the sampling variance of rho is large to
+begin with, so a conclusion without error bars does not hold up.
 
-目录约定
---------
+Directory convention
+--------------------
     results/seed{SEED}/baseline/{backbone}.pt
     results/seed{SEED}/sensitivity/{rank,sens}_{backbone}_{shift}.json|npz
     results/seed{SEED}/equal_error/arm_{backbone}_{shift}.json
 
-用 `--migrate-base-seed` 可以把旧的扁平布局
-（`results/baseline`、`results/sensitivity`、`results/equal_error`）
-整体搬进 `results/seed{N}/`，无需重跑。
+`--migrate-base-seed` moves the old flat layout
+(`results/baseline`, `results/sensitivity`, `results/equal_error`) into
+`results/seed{N}/` wholesale, with no need to rerun anything.
 
-用法
-----
-    # 先看要跑什么
+Usage
+-----
+    # see what would run first
     python scripts/run_seeds.py --seeds 43,44 --dry-run
 
-    # 跑（可随时 Ctrl+C，重跑加 --skip-existing 续上）
+    # run it (Ctrl+C any time; rerun with --skip-existing to resume)
     python scripts/run_seeds.py --seeds 43,44 --skip-existing
 
-    # 把已有结果搬进统一布局
+    # move existing results into the unified layout
     python scripts/run_seeds.py --migrate-base-seed 42
 """
 
@@ -63,7 +64,7 @@ def run(cmd: List[str], log: pathlib.Path) -> int:
 
 
 def migrate_base_seed(seed: int) -> int:
-    """把旧的扁平 results/ 布局搬进 results/seed{N}/。"""
+    """Move the old flat results/ layout into results/seed{N}/."""
     dst = seed_root(seed)
     moved = 0
     for name in FLAT:
@@ -72,25 +73,26 @@ def migrate_base_seed(seed: int) -> int:
             continue
         tgt = dst / name
         if tgt.exists():
-            print(f"  跳过 {name}/：目标已存在 {tgt.relative_to(ROOT)}")
+            print(f"  skipping {name}/: target already exists {tgt.relative_to(ROOT)}")
             continue
         tgt.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(tgt))
         print(f"  {src.relative_to(ROOT)}  ->  {tgt.relative_to(ROOT)}")
         moved += 1
-    print(f"  迁移完成：{moved} 个目录")
+    print(f"  migration done: {moved} directories")
     return 0
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="多种子实验编排")
+    ap = argparse.ArgumentParser(description="multi-seed experiment orchestration")
     ap.add_argument("--config", default="configs/base.yaml")
-    ap.add_argument("--seeds", default="43,44", help="逗号分隔的种子列表")
+    ap.add_argument("--seeds", default="43,44", help="comma-separated list of seeds")
     ap.add_argument("--backbones", default="cldnn,resnet1d")
-    ap.add_argument("--shifts", default=None, help="默认取 config 里全部 shifts")
+    ap.add_argument("--shifts", default=None,
+                    help="defaults to every shift in the config")
     ap.add_argument("--skip-existing", action="store_true")
     ap.add_argument("--migrate-base-seed", type=int, default=None,
-                    help="把扁平 results/ 布局搬进 results/seed{N}/ 后退出")
+                    help="move the flat results/ layout into results/seed{N}/ and exit")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -110,10 +112,12 @@ def main() -> int:
     print(f"  seeds     : {seeds}")
     print(f"  backbones : {backbones}")
     print(f"  shifts    : {shifts}")
-    print(f"  训练 {n_train} 次，敏感性 {n_sens} 次，等误差臂 {n_sens} 次")
+    print(f"  {n_train} training runs, {n_sens} sensitivity runs, "
+          f"{n_sens} equal-error arms")
 
     total_min = n_train * 8 + n_sens * 2.2
-    print(f"  预计耗时：约 {total_min:.0f} 分钟（CPU，按实测单次训练 8 分钟估）")
+    print(f"  estimated time: about {total_min:.0f} min "
+          "(CPU, assuming the measured 8 min per training run)")
     print()
 
     if args.dry_run:
@@ -122,7 +126,7 @@ def main() -> int:
             print(f"  --- seed {seed}  ->  {root.relative_to(ROOT)}")
             for b in backbones:
                 ck = root / "baseline" / f"{b}.pt"
-                print(f"      train {b:<10} {'已完成' if ck.exists() else '待跑'}")
+                print(f"      train {b:<10} {'done' if ck.exists() else 'to run'}")
             for b in backbones:
                 for s in shifts:
                     rk = root / "sensitivity" / f"rank_{b}_{s}.json"
@@ -144,11 +148,11 @@ def main() -> int:
         sens_dir = root / "sensitivity"
         arm_dir = root / "equal_error"
 
-        # ---------------------------------------------------------- 训练
+        # ---------------------------------------------------------- training
         for b in backbones:
             ck = base_dir / f"{b}.pt"
             if args.skip_existing and ck.exists():
-                print(f"  [train] {b}: 已完成，跳过", flush=True)
+                print(f"  [train] {b}: already done, skipping", flush=True)
                 done_units += 1
                 continue
             print(f"  [train] {b}  (seed={seed})", flush=True)
@@ -158,9 +162,10 @@ def main() -> int:
                           logs / f"train_{b}_s{seed}.log")
             done_units += 1
             el = time.time() - t0
-            print(f"    进度 {done_units}/{total_units}  已用 {el/60:.1f} 分钟", flush=True)
+            print(f"    progress {done_units}/{total_units}  "
+                  f"elapsed {el/60:.1f} min", flush=True)
 
-        # ---------------------------------------------------------- 敏感性 + 等误差臂
+        # ---------------------------------------------------------- sensitivity + equal-error arm
         for b in backbones:
             for s in shifts:
                 rk = sens_dir / f"rank_{b}_{s}.json"
@@ -168,7 +173,7 @@ def main() -> int:
                 ck = base_dir / f"{b}.pt"
 
                 if args.skip_existing and rk.exists():
-                    print(f"  [sens] {b} x {s}: 已完成，跳过", flush=True)
+                    print(f"  [sens] {b} x {s}: already done, skipping", flush=True)
                 else:
                     print(f"  [sens] {b} x {s}", flush=True)
                     rc_all |= run([py, "scripts/run_sensitivity.py",
@@ -179,10 +184,11 @@ def main() -> int:
                                   logs / f"sens_{b}_{s}_s{seed}.log")
                 done_units += 1
                 el = time.time() - t0
-                print(f"    进度 {done_units}/{total_units}  已用 {el/60:.1f} 分钟", flush=True)
+                print(f"    progress {done_units}/{total_units}  "
+                      f"elapsed {el/60:.1f} min", flush=True)
 
                 if args.skip_existing and ar.exists():
-                    print(f"  [arm ] {b} x {s}: 已完成，跳过", flush=True)
+                    print(f"  [arm ] {b} x {s}: already done, skipping", flush=True)
                 else:
                     print(f"  [arm ] {b} x {s}", flush=True)
                     rc_all |= run([py, "scripts/run_equal_error.py",
@@ -194,12 +200,13 @@ def main() -> int:
                                   logs / f"arm_{b}_{s}_s{seed}.log")
                 done_units += 1
                 el = time.time() - t0
-                print(f"    进度 {done_units}/{total_units}  已用 {el/60:.1f} 分钟", flush=True)
+                print(f"    progress {done_units}/{total_units}  "
+                      f"elapsed {el/60:.1f} min", flush=True)
 
-    print(f"\n完成，总用时 {(time.time() - t0)/60:.1f} 分钟")
+    print(f"\ndone, total elapsed {(time.time() - t0)/60:.1f} min")
     if rc_all:
-        print("X 有子步骤失败，见 experiments/logs/")
-    print("\n下一步：python scripts/aggregate_seeds.py")
+        print("X some sub-steps failed; see experiments/logs/")
+    print("\nnext: python scripts/aggregate_seeds.py")
     return 0 if rc_all == 0 else 1
 
 

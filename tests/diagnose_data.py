@@ -1,13 +1,16 @@
-"""诊断 2：为什么同域测试准确率卡在 0.50？
+"""Diagnostic 2: why does in-domain test accuracy stall at 0.50?
 
-假设
-----
-* H1：符号数/过采样率太低（sps=2, 32 symbols），高阶调制不可分
-* H2：标签与波形事实上独立（生成器有 bug）
-* H3：accuracy/模型实现有 bug（训练集自身切一半也测不准）
+Hypotheses
+----------
+* H1: too few symbols / too low an oversampling rate (sps=2, 32 symbols), so the
+  higher-order modulations are not separable
+* H2: the labels are effectively independent of the waveform (a generator bug)
+* H3: a bug in the accuracy/model implementation (even half of the training set
+  scores badly)
 
-做法：在真实配置附近扫 sps 与符号数，并打印**逐类**测试准确率与类别分布。
-若是 H1，提高 sps/符号数应当改善；若是 H2/H3，无论怎么调都不会改善。
+Method: sweep sps and the symbol count near the real config, and print the
+**per-class** test accuracy and the class distribution.
+If it is H1, raising sps/symbols should help; if it is H2/H3, nothing will help.
 """
 
 from __future__ import annotations
@@ -61,7 +64,8 @@ def run(n_symbols, sps, n_train=6000, n_test=1500, hidden=(64, 32), epochs=40, s
     m.train(Xtr, ytr, epochs=epochs, batch_size=128, lr=2e-3,
             weight_decay=1e-3, seed=seed)
 
-    # H3 检查：把训练集切一半当"测试"，若也测不准就是实现 bug
+    # H3 check: use half the training set as a "test"; if that also scores
+    # badly, it is an implementation bug
     half = n_train // 2
     acc_self = m.accuracy(Xtr[half:], ytr[half:])
     pred = np.argmax(m.forward(Xte), axis=1)
@@ -78,14 +82,14 @@ def run(n_symbols, sps, n_train=6000, n_test=1500, hidden=(64, 32), epochs=40, s
 
 
 def main():
-    print("H3 前置检查：类别分布（训练集）")
+    print("H3 preliminary check: class distribution (training set)")
     cfg = ChannelConfig.from_dict({"snr_db": (10.0, 18.0)})
     _, y = make_iq_dataset(4000, cfg, modulations=MODS, n_symbols=32, sps=2, seed=0)
-    print("  true:", np.bincount(y, minlength=4).tolist(), " (应接近均匀)")
+    print("  true:", np.bincount(y, minlength=4).tolist(), " (should be near uniform)")
 
-    print("\n扫描 sps 与符号数：")
+    print("\nsweep over sps and symbol count:")
     print(f"{'n_sym':>6} {'sps':>4} {'L':>6} {'params':>8} {'train':>7} "
-          f"{'self':>7} {'test':>7}   逐类测试准确率")
+          f"{'self':>7} {'test':>7}   per-class test accuracy")
     print("-" * 92)
 
     for n_symbols, sps in [(32, 2), (32, 4), (64, 4), (128, 4), (128, 8), (256, 4)]:
@@ -94,11 +98,11 @@ def main():
         print(f"{r['n_symbols']:>6} {r['sps']:>4} {r['L']:>6} {r['params']:>8} "
               f"{r['train_acc']:>7.4f} {r['self_acc']:>7.4f} {r['test_acc']:>7.4f}   {pc}")
 
-    print("\n预测分布 vs 真实分布（最后一组）")
+    print("\npredicted distribution vs true distribution (last setting)")
     r = run(256, 4)
     print("  pred:", r["pred_hist"])
     print("  true:", r["true_hist"])
-    print("  逐类:", np.round(r["per_class"], 3).tolist())
+    print("  per-class:", np.round(r["per_class"], 3).tolist())
     return 0
 
 

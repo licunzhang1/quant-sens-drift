@@ -1,19 +1,25 @@
-"""诊断 4：找出"源域不饱和、目标域不退化"的难度区间。
+"""Diagnostic 4: find the difficulty range where the source domain is not
+saturated and the target domain does not collapse.
 
-为什么必须做这一步
-------------------
-量化敏感性分析要求：
-  * 源域准确率**不能饱和**（否则 Δloss/Δacc ≈ 0，敏感性全是噪声，
-    秩相关退化 —— 见 smoke_pipeline 里 acc 口径得到 NaN 的现象）
-  * 目标域准确率**不能掉到随机水平**（否则敏感性排序本身就是噪声）
+Why this step is mandatory
+--------------------------
+A quantization sensitivity analysis requires:
+  * the source-domain accuracy **must not be saturated** (otherwise
+    Delta loss / Delta acc ~= 0, the sensitivity is pure noise and the rank
+    correlation degenerates -- see the NaN the acc metric produces in
+    smoke_pipeline)
+  * the target-domain accuracy **must not drop to chance level** (otherwise the
+    sensitivity ranking is itself noise)
 
-两个条件把"难度"夹在一个区间里。这个脚本把它扫出来。
+Those two conditions squeeze the "difficulty" into a single range. This script
+scans it out.
 
-输出的关键列：
-  accA   源域准确率        —— 想要 0.85 ~ 0.97
-  dLoss2 源域 2bit 时最大 Δloss —— 想要明显 > 0
-  spread 源域敏感性的极差/量级 —— 想要有区分度而不是全零
-  accB   目标域准确率      —— 想要 0.35 ~ 0.75
+The key output columns:
+  accA   source-domain accuracy       -- want 0.85 ~ 0.97
+  dLoss2 largest Delta loss at 2bit in the source domain -- want clearly > 0
+  spread spread/magnitude of the source-domain sensitivity -- want real
+         resolution rather than all zeros
+  accB   target-domain accuracy       -- want 0.35 ~ 0.75
 """
 
 from __future__ import annotations
@@ -65,7 +71,8 @@ def build(n_symbols, snr_a, snr_b, cfo_b, epochs, n_train=3000, n_test=800, seed
     m = NumpyMLP(dims, seed=seed)
     m.train(Fa, ya, epochs=epochs, batch_size=128, lr=3e-3, weight_decay=1e-4, seed=seed)
 
-    # 源域 2bit 逐层敏感性（只算最激进的一档，够判断是否饱和）
+    # source-domain per-layer sensitivity at 2bit (only the most aggressive
+    # rung, which is enough to judge saturation)
     base = m.loss(Fat, yat)
     sens2 = []
     for name in m.weight_layer_names():
@@ -86,16 +93,16 @@ def build(n_symbols, snr_a, snr_b, cfo_b, epochs, n_train=3000, n_test=800, seed
 
 def main():
     print(f"{'n_sym':>5} {'SNR_A':>10} {'SNR_B':>9} {'ep':>4} "
-          f"{'accA':>7} {'lossA':>8} {'dLoss2':>9} {'spread':>8} {'accB':>7}  判定")
+          f"{'accA':>7} {'lossA':>8} {'dLoss2':>9} {'spread':>8} {'accB':>7}  verdict")
     print("-" * 96)
 
     configs = [
-        # 先验证 CFO 假设：同为 (6,14)→(0,8)，只改 CFO
+        # first check the CFO hypothesis: same (6,14)->(0,8), only CFO changes
         (64, (6, 14), (0, 8), 0.0, 100),
         (64, (6, 14), (0, 8), 0.001, 100),
         (64, (6, 14), (0, 8), 0.005, 100),
         (64, (6, 14), (0, 8), 0.02, 100),
-        # CFO=0，只做 SNR 偏移，找可用区间
+        # CFO=0, SNR shift only, looking for a usable range
         (128, (10, 18), (2, 10), 0.0, 60),
         (128, (10, 18), (0, 8), 0.0, 60),
         (64, (10, 18), (2, 10), 0.0, 80),
@@ -111,8 +118,8 @@ def main():
         r = build(n_sym, sa, sb, cfo, ep)
         ok_src = 0.85 <= r["accA"] <= 0.975 and r["dLoss2_max"] > 1e-3
         ok_tgt = 0.35 <= r["accB"] <= 0.75
-        verdict = ("OK 可用" if (ok_src and ok_tgt)
-                   else ("源域饱和" if not ok_src else "目标域不合适"))
+        verdict = ("OK usable" if (ok_src and ok_tgt)
+                   else ("source saturated" if not ok_src else "target unsuitable"))
         print(f"{n_sym:>5} {str(sa):>10} {str(sb):>9} {ep:>4} "
               f"{r['accA']:>7.4f} {r['lossA']:>8.4f} {r['dLoss2_max']:>9.5f} "
               f"{r['dLoss2_spread']:>8.5f} {r['accB']:>7.4f}  {verdict}")
@@ -121,15 +128,18 @@ def main():
     good = [x for x in rows if x[0].startswith("OK")]
     print("-" * 96)
     if good:
-        print("可用配置：")
+        print("usable configs:")
         for v, n_sym, sa, sb, cfo, ep, r in good:
             print(f"  n_symbols={n_sym} SNR_A={sa} SNR_B={sb} CFO={cfo} epochs={ep}")
             print(f"    accA={r['accA']:.4f} accB={r['accB']:.4f} "
                   f"dLoss2_max={r['dLoss2_max']:.5f}")
-            print(f"    源域 2bit 逐层 Δloss = {np.round(r['sens2'], 5).tolist()}")
+            print(f"    source-domain per-layer Delta loss at 2bit = "
+                  f"{np.round(r['sens2'], 5).tolist()}")
     else:
-        print("没有配置同时满足条件。建议：降低源域 SNR 或减少符号数（削弱源域），")
-        print("同时适当提高目标域 SNR（避免目标域退化到随机）。")
+        print("no config satisfies both conditions. Suggestion: lower the "
+              "source-domain SNR or use fewer symbols (weaken the source),")
+        print("and raise the target-domain SNR appropriately so the target does "
+              "not collapse to chance.")
     return 0
 
 

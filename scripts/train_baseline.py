@@ -1,19 +1,20 @@
-"""W3–W4：训练 baseline 骨干，产出各域精度表。
+"""W3-W4: train the baseline backbone and produce per-domain accuracy tables.
 
     python scripts/train_baseline.py --config configs/base.yaml
     python scripts/train_baseline.py --config configs/base.yaml --backbone resnet1d
 
-产出
-----
-``results/baseline/<backbone>_<domain>.json``  各域 acc/loss
-``results/baseline/<backbone>.pt``             权重
+Output
+------
+``results/baseline/<backbone>_<domain>.json``  per-domain acc/loss
+``results/baseline/<backbone>.pt``             weights
 
-注意
-----
-* **必须留验证集做早停**，否则模型会训练到 loss≈0 的平坦极小值，
-  量化敏感性随之退化成噪声（见 tests/smoke_pipeline.py 文件头【发现 2】）。
-* 这里用 Domain A 的验证集做早停；**不能用目标域的数据做任何模型选择**，
-  否则跨域结论不成立。
+Notes
+-----
+* **Holding out a validation set for early stopping is mandatory**, otherwise the
+  model trains down to the flat minimum at loss~=0 and the quantization sensitivity
+  degenerates into noise (see [finding 2] in the header of tests/smoke_pipeline.py).
+* Early stopping here uses the Domain A validation set; **no target-domain data may
+  be used for any model selection**, or the cross-domain conclusions do not hold.
 """
 
 from __future__ import annotations
@@ -60,10 +61,10 @@ from src.utils import dump_json, seed_everything  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/base.yaml")
-    ap.add_argument("--backbone", default=None, help="覆盖 config 里的 model.name")
+    ap.add_argument("--backbone", default=None, help="override model.name from the config")
     ap.add_argument("--outdir", default="results/baseline")
     ap.add_argument("--seed", type=int, default=None,
-                    help="覆盖 config 里的 seed（多种子实验用）")
+                    help="override the seed from the config (used by the multi-seed runs)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -83,25 +84,25 @@ def main() -> int:
     name = cfg["model"]["name"]
     print(f"[train_baseline] backbone={name}  device={device}  seed={seed}")
 
-    # ---------------------------------------------------------------- 数据
+    # ---------------------------------------------------------------- data
     n_tr = int(dcfg["n_train"])
     n_val = int(dcfg.get("n_val", 2000))
     t0 = time.time()
     Xtr, ytr = make_domain(cfg, "a", n_tr, seed)
     Xval, yval = make_domain(cfg, "a", n_val, seed + 1)
-    # 测试域：源域 + 所有偏移域
+    # test domains: the source domain plus every shifted domain
     domains = {"A": (Xval, yval)}
     for key in (dcfg.get("shifts") or {}):
         domains[key] = make_domain(cfg, key, int(dcfg.get("n_test", 2000)), seed + 2)
-    print(f"  数据生成完成 {time.time() - t0:.1f}s   "
-          f"train={Xtr.shape}  域={list(domains)}")
+    print(f"  data generated in {time.time() - t0:.1f}s   "
+          f"train={Xtr.shape}  domains={list(domains)}")
 
-    # 类别数按实际标签推断并覆盖配置
+    # infer the class count from the actual labels and override the config
     n_classes = int(len(np.unique(ytr)))
     model = build_model(cfg, n_classes=n_classes).to(device)
-    print(f"  模型 {name}  参数量 {count_params(model):,}  n_classes={n_classes}")
+    print(f"  model {name}  params {count_params(model):,}  n_classes={n_classes}")
 
-    # ---------------------------------------------------------------- 训练
+    # ---------------------------------------------------------------- training
     lr = float(tcfg.get("lr", 1e-3))
     wd = float(tcfg.get("weight_decay", 1e-4))
     epochs = int(tcfg.get("epochs", 40))
@@ -147,7 +148,8 @@ def main() -> int:
         else:
             bad += 1
             if bad >= patience:
-                print(f"  早停于第 {ep} 轮（验证损失连续 {patience} 轮未改善）")
+                print(f"  early stop at epoch {ep} "
+                      f"(validation loss did not improve for {patience} epochs)")
                 break
 
     if best_state is not None:
@@ -157,9 +159,9 @@ def main() -> int:
     torch.save({"state_dict": model.state_dict(), "config": cfg,
                 "n_classes": n_classes, "backbone": name}, ckpt)
 
-    # ---------------------------------------------------------------- 各域评估
+    # ---------------------------------------------------------------- per-domain eval
     results = {}
-    print("\n  各域指标（loss 为主口径）")
+    print("\n  per-domain metrics (loss is the primary metric)")
     print("    {:<12s}{:>10s}{:>12s}".format("domain", "acc", "loss"))
     for tag, (X, y) in domains.items():
         acc, loss = evaluate(model, X, y, device)
@@ -167,40 +169,45 @@ def main() -> int:
         print("    {:<12s}{:>10.4f}{:>12.4f}".format(tag, acc, loss))
 
     a_acc = results["A"]["acc"]
-    print(f"\n  同域基线 acc = {a_acc:.4f}")
+    print(f"\n  in-domain baseline acc = {a_acc:.4f}")
     for tag, r in results.items():
         if tag != "A":
-            print(f"  {tag}: acc 掉点 {a_acc - r['acc']:+.4f}  "
-                  f"loss 上升 {r['loss'] - results['A']['loss']:+.4f}")
+            print(f"  {tag}: acc drop {a_acc - r['acc']:+.4f}  "
+                  f"loss rise {r['loss'] - results['A']['loss']:+.4f}")
 
-    # ---------------------------------------------------------------- 护栏
+    # ---------------------------------------------------------------- guardrails
     warnings: list[str] = []
     if a_acc > 0.99:
         warnings.append(
-            f"源域准确率 {a_acc:.4f} > 0.99 —— **饱和**。"
-            "此时量化几乎不改变输出，逐层敏感性会退化成近似全 0，"
-            "ρ 变成噪声（实测：10 层里 7 层为 0）。"
-            "请降低源域 SNR、减少符号数，或增加类别数。见 docs/findings.md 发现 2/4。"
+            f"source-domain accuracy {a_acc:.4f} > 0.99 -- **saturated**."
+            " Quantization then barely changes the output, the per-layer sensitivity"
+            " degenerates to roughly all zeros, and rho becomes noise"
+            " (measured: 7 of 10 layers are zero)."
+            " Lower the source-domain SNR, use fewer symbols, or add more classes."
+            " See findings 2/4 in docs/findings.md."
         )
     if results["A"]["loss"] < 0.01:
         warnings.append(
-            f"源域 loss {results['A']['loss']:.4f} < 0.01 —— 同样意味着饱和。")
+            f"source-domain loss {results['A']['loss']:.4f} < 0.01 "
+            "-- this also means saturation.")
     if a_acc < 0.80:
         warnings.append(
-            f"源域准确率 {a_acc:.4f} < 0.80 —— 模型欠拟合，"
-            "敏感性会被优化不足的噪声主导。请提高源域 SNR 或延长训练。")
+            f"source-domain accuracy {a_acc:.4f} < 0.80 -- the model is underfitting,"
+            " so the sensitivity will be dominated by optimization noise."
+            " Raise the source-domain SNR or train longer.")
     for tag, r in results.items():
         if tag == "A":
             continue
         drop = a_acc - r["acc"]
         if drop > a_acc - 0.30:
             warnings.append(
-                f"{tag}: 目标域 acc {r['acc']:.4f} 接近随机水平，"
-                "敏感性排序会变成噪声。请减弱该偏移强度。")
+                f"{tag}: target-domain acc {r['acc']:.4f} is near chance level,"
+                " so the sensitivity ranking will be noise. Weaken this shift.")
         if abs(drop) < 0.02:
             warnings.append(
-                f"{tag}: 域间隙仅 {drop:+.4f} —— 这是一个**阴性对照**（无有效偏移）。"
-                "管线应当正确报告'无影响'；不要把它当作有意义的偏移臂。")
+                f"{tag}: domain gap is only {drop:+.4f} -- this is a **negative"
+                " control** (no effective shift). The pipeline should correctly"
+                " report 'no effect'; do not treat it as a meaningful shift arm.")
     if warnings:
         print("\n  " + "!" * 68)
         for w in warnings:
@@ -212,8 +219,8 @@ def main() -> int:
         "n_classes": n_classes, "domains": results, "history": history,
         "checkpoint": str(ckpt),
     })
-    print(f"\n  已写入 {ckpt}")
-    print(f"  已写入 {outdir / f'{name}_metrics.json'}")
+    print(f"\n  wrote {ckpt}")
+    print(f"  wrote {outdir / f'{name}_metrics.json'}")
     return 0
 
 

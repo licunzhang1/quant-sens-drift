@@ -1,9 +1,10 @@
-# 快速验证配置：用来确认 torch 侧链路能跑通，不做科学结论。
+# Fast verification configuration: confirms the torch-side pipeline runs
+# end to end. It is not meant to produce scientific results.
 #   python scripts/train_baseline.py --config configs/smoke.yaml
 #   python scripts/run_sensitivity.py --config configs/smoke.yaml --shift D1_snr
 #   python scripts/run_equal_error.py --config configs/smoke.yaml --shift D1_snr
 #   python scripts/make_figures.py --shift D1_snr
-# 几十秒内跑完。
+# Finishes in well under a minute.
 
 seed: 42
 
@@ -62,7 +63,7 @@ quant:
 sensitivity:
   metric: loss
   layer_filter: null
-  max_layers: 4          # 快速验证只扫前 4 层
+  max_layers: 4          # quick verification only sweeps the first 4 layers
 
 rank:
   n_permutations: 2000

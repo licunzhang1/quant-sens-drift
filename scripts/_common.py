@@ -1,4 +1,4 @@
-"""scripts 公用工具：配置、模型构建、数据生成、评估。"""
+"""Shared helpers for scripts/: config, model building, data generation, evaluation."""
 
 from __future__ import annotations
 
@@ -60,20 +60,20 @@ def build_model(cfg: Dict, n_classes: Optional[int] = None) -> nn.Module:
         if "n_blocks" in sub:
             sub["n_blocks"] = tuple(sub["n_blocks"])
         return ResNet1D(n_classes=k, **sub)
-    raise ValueError(f"未知模型: {name}")
+    raise ValueError(f"unknown model: {name}")
 
 
 def make_domain(
     cfg: Dict, domain: str, n: int, seed: int
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """按配置生成某个域的数据。``domain`` ∈ {'a', 'b', 或 shifts 里的键}。"""
+    """Generate one domain worth of data from the config. ``domain`` is in {'a', 'b', or a key of shifts}."""
     d = cfg["data"]
     if domain == "a":
         ch = d["domain_a"]
     elif domain in (d.get("shifts") or {}):
         ch = d["shifts"][domain]
     else:
-        raise KeyError(f"未知域 {domain!r}；可用: a, {list((d.get('shifts') or {}).keys())}")
+        raise KeyError(f"unknown domain {domain!r}; available: a, {list((d.get('shifts') or {}).keys())}")
 
     return make_iq_dataset(
         n,
@@ -94,7 +94,7 @@ def evaluate(
     device: torch.device,
     batch_size: int = 512,
 ) -> Tuple[float, float]:
-    """返回 ``(accuracy, cross_entropy_loss)``。**loss 是敏感性分析的主口径。**"""
+    """Return ``(accuracy, cross_entropy_loss)``. **loss is the primary metric for the sensitivity analysis.**"""
     model.eval()
     crit = nn.CrossEntropyLoss(reduction="sum")
     total_loss, correct, n = 0.0, 0, 0

@@ -1,13 +1,13 @@
-"""报告用的四张核心图。
+"""The four core figures for the report.
 
-图 1  逐层敏感性热图（层 × 位宽，两个域并排）
-图 2  敏感性排序散点 + ρ + p 值（核心量）
-图 3  等重构误差三臂对比（最关键的一张）
-图 4  代理量 vs 敏感性散点
+Figure 1  layer-wise sensitivity heatmap (layer x bit width, domains side by side)
+Figure 2  sensitivity-rank scatter + rho + p-value (the core quantity)
+Figure 3  three-arm comparison at equal reconstruction error (the key figure)
+Figure 4  proxy quantity vs sensitivity scatter
 
-只依赖 numpy + matplotlib，不需要 torch。
-**图内文字用英文**：避免 CJK 字体缺失导致的方框乱码；
-中文说明放在 README / 报告正文里。
+Depends only on numpy + matplotlib; torch is not required.
+**Text inside the figures is English**: this avoids the boxes that appear when
+CJK fonts are missing. The prose explanation belongs in the README / report body.
 """
 
 from __future__ import annotations
@@ -55,7 +55,10 @@ def plot_sensitivity_heatmap(
     name_a: str = "Domain A (source)",
     name_b: str = "Domain B (target)",
 ) -> pathlib.Path:
-    """图 1：逐层敏感性热图。同一个色标，方便直接比较两个域。"""
+    """Figure 1: layer-wise sensitivity heatmap.
+
+    One shared color scale, so the two domains can be compared directly.
+    """
     plt = _plt()
     a = np.asarray(delta_a, dtype=float)
     b = np.asarray(delta_b, dtype=float)
@@ -86,7 +89,10 @@ def plot_rank_scatter(
     reference_bits: Optional[int] = None,
     annotate: bool = True,
 ) -> pathlib.Path:
-    """图 2：两域敏感性的排序散点 —— 核心量 ρ 的可视化。"""
+    """Figure 2: rank scatter of the sensitivity in both domains.
+
+    A visualization of the core quantity rho.
+    """
     plt = _plt()
     a = np.asarray(sens_a, dtype=float)
     b = np.asarray(sens_b, dtype=float)
@@ -140,7 +146,10 @@ def plot_equal_error_arms(
     path: str | pathlib.Path,
     budget_ratio: Optional[float] = None,
 ) -> pathlib.Path:
-    """图 3：等重构误差三臂对比 —— **最关键的一张图**。"""
+    """Figure 3: three-arm comparison at equal reconstruction error.
+
+    **The most important figure.**
+    """
     plt = _plt()
     order = ["uniform", "agnostic", "oracle"]
     labels = {
@@ -196,7 +205,7 @@ def plot_proxy_scatter(
     path: str | pathlib.Path,
     top_k: int = 6,
 ) -> pathlib.Path:
-    """图 4：代理量 vs 敏感性。"""
+    """Figure 4: proxy quantity vs sensitivity."""
     plt = _plt()
     s = np.asarray(sensitivity, dtype=float)
     chosen = [c["proxy"] for c in correlations[:top_k] if c["proxy"] in proxies]
@@ -229,7 +238,7 @@ def plot_domain_gap(
     path: str | pathlib.Path,
     metric: str = "accuracy",
 ) -> pathlib.Path:
-    """附加图：各域指标柱状图（展示域间隙）。"""
+    """Extra figure: per-domain metric bar chart (shows the domain gap)."""
     plt = _plt()
     names = list(values.keys())
     vals = [float(values[k]) for k in names]

@@ -1,21 +1,27 @@
-"""CLDNN —— 信号调制识别最常用的经典骨干（Convolutional + LSTM + DNN）。
+"""CLDNN -- the classic backbone most used for signal modulation recognition
+(Convolutional + LSTM + DNN).
 
-参考：Sainath et al., *Convolutional, Long Short-Term Memory, Fully Connected
-Deep Neural Networks* (ICASSP 2015)；在 AMC 上被广泛采用（如 O'Shea et al. 的
-RadioML 系列工作）。
+Reference: Sainath et al., *Convolutional, Long Short-Term Memory, Fully
+Connected Deep Neural Networks* (ICASSP 2015); widely adopted for AMC (for
+example the RadioML line of work by O'Shea et al.).
 
-输入 ``(N, 2, L)``：通道 0=I、1=Q。输出 ``(N, n_classes)``。
+Input ``(N, 2, L)``: channel 0=I, 1=Q. Output ``(N, n_classes)``.
 
-关于深度的一个实测约束
-----------------------
-本项目的核心量 ρ 是**逐层**敏感性排序的秩相关，层数太少时几乎没有统计功效：
-n=5 时置换检验的最小可能 p 值约 0.008，且 ρ 的置信区间会宽到 [-1, 1]（实测）。
+A measured constraint on depth
+------------------------------
+The core quantity rho of this project is the rank correlation of the **layer-wise**
+sensitivity ranking, and with too few layers it has almost no statistical power:
+at n=5 the smallest possible p-value of a permutation test is about 0.008, and
+the confidence interval on rho widens to [-1, 1] (measured).
 
-最初的 CLDNN 实现（每个 stage 一个卷积）只有 **5 个可量化权重层**
-（3 conv + 2 fc），不足以支撑秩分析。因此这里改成每个 stage **两个卷积**
-（``convs_per_stage=2``），默认配置下得到 8 conv + 2 fc = **10 个权重层**。
+The first CLDNN implementation (one convolution per stage) had only **5
+quantizable weight layers** (3 conv + 2 fc), not enough to support a rank
+analysis. It was therefore changed here to **two convolutions per stage**
+(``convs_per_stage=2``), which gives 8 conv + 2 fc = **10 weight layers** under
+the default configuration.
 
-对照：``ResNet1D`` 有 16 个权重层。两个骨干的层数都 ≥10，符合秩分析的样本量要求。
+For comparison: ``ResNet1D`` has 16 weight layers. Both backbones have >=10
+layers, which meets the sample-size requirement of the rank analysis.
 """
 
 from __future__ import annotations
@@ -71,13 +77,13 @@ class CLDNN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dim() == 2:  # 兼容展平输入 (N, 2*L)
+        if x.dim() == 2:  # tolerate flattened input (N, 2*L)
             x = x.view(x.shape[0], self.in_channels, -1)
         h = self.conv(x)                 # (N, C, L')
         h = h.transpose(1, 2)            # (N, L', C)
         h = self.dropout(h)
         h, _ = self.lstm(h)
-        h = h[:, -1, :]                  # 取最后一个时间步
+        h = h[:, -1, :]                  # take the last time step
         return self.fc(h)
 
     def weight_layer_names(self) -> List[str]:

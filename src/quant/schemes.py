@@ -1,8 +1,9 @@
-"""量化方案的定义与枚举。
+"""Definition and enumeration of quantization schemes.
 
-一个"方案"= 量化什么（权重/激活）× 粒度（per-tensor / per-channel）× 对称性 × 位宽。
+A "scheme" = what is quantized (weights/activations) x granularity
+(per-tensor / per-channel) x symmetry x bit width.
 
-实验里的因子 A 就是这里的 ``QuantScheme`` 集合。
+Factor A in the experiments is the set of ``QuantScheme`` objects defined here.
 """
 
 from __future__ import annotations
@@ -15,17 +16,17 @@ __all__ = ["QuantScheme", "default_scheme_grid", "scheme_from_name"]
 
 @dataclass(frozen=True)
 class QuantScheme:
-    """一种量化配置。
+    """One quantization configuration.
 
     Attributes
     ----------
-    name : 人类可读的名字，会进结果表
-    bits : 位宽
-    symmetric : 对称 / 非对称
-    quantize_weights : 是否量化权重
-    quantize_activations : 是否量化激活
-    weight_per_channel : 权重是否 per-channel（沿输出通道）
-    activation_per_channel : 激活是否 per-channel（一般 False）
+    name : human-readable name, goes into the results table
+    bits : bit width
+    symmetric : symmetric / asymmetric
+    quantize_weights : whether to quantize the weights
+    quantize_activations : whether to quantize the activations
+    weight_per_channel : whether weights are per-channel (along the output axis)
+    activation_per_channel : whether activations are per-channel (usually False)
     """
 
     name: str
@@ -61,11 +62,12 @@ def make(
 
 
 def default_scheme_grid(bits_ladder=(2, 3, 4, 6, 8)) -> List[QuantScheme]:
-    """默认方案格子（因子 A）。
+    """The default scheme grid (factor A).
 
-    为了控制实验规模，只枚举有意义的组合：
-      * 仅权重（per-tensor / per-channel） × 位宽
-      * 权重 + 激活（对称 / 非对称） × 位宽
+    To keep the experiment size manageable, only meaningful combinations are
+    enumerated:
+      * weights only (per-tensor / per-channel) x bit width
+      * weights + activations (symmetric / asymmetric) x bit width
     """
     schemes: List[QuantScheme] = []
     for b in bits_ladder:

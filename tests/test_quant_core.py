@@ -1,10 +1,10 @@
-"""核心量化数学与秩相关分析的单元测试。
+"""Unit tests for the core quantization math and rank-correlation analysis.
 
-只依赖 numpy，**不需要 torch**。可以直接跑：
+Depends on numpy only; **torch is not needed**. Run it directly:
 
     python tests/test_quant_core.py
 
-也可以用 pytest 跑。
+or through pytest.
 """
 
 from __future__ import annotations
@@ -73,10 +73,10 @@ def approx(a: float, b: float, tol: float = 1e-9) -> bool:
 
 
 # ==========================================================================
-# 1. 量化区间
+# 1. quantization range
 # ==========================================================================
 def test_qrange() -> None:
-    print("\n[1] 量化区间")
+    print("\n[1] quantization range")
     check("qrange(8, sym) == (-127, 127)", qrange(8, True) == (-127, 127), str(qrange(8, True)))
     check("qrange(8, asym) == (0, 255)", qrange(8, False) == (0, 255), str(qrange(8, False)))
     check("qrange(2, sym) == (-1, 1)", qrange(2, True) == (-1, 1), str(qrange(2, True)))
@@ -87,55 +87,59 @@ def test_qrange() -> None:
         qrange(1, True)
     except ValueError:
         raised = True
-    check("qrange(1, sym) 抛 ValueError（qmax 会是 0）", raised)
+    check("qrange(1, sym) raises ValueError (qmax would be 0)", raised)
 
     raised = False
     try:
         qrange(0, False)
     except ValueError:
         raised = True
-    check("qrange(0, asym) 抛 ValueError", raised)
+    check("qrange(0, asym) raises ValueError", raised)
 
 
 # ==========================================================================
-# 2. 量化正确性
+# 2. quantization correctness
 # ==========================================================================
 def test_exact_quantization() -> None:
-    print("\n[2] 可精确表示的张量应零误差")
+    print("\n[2] exactly representable tensors must give zero error")
     x = np.array([-1.0, 0.0, 1.0])
     xq, scale, zero = quantize_dequantize(x, 2, symmetric=True)
-    check("x=[-1,0,1], 2bit 对称 → 无误差", approx(np.max(np.abs(x - xq)), 0.0),
+    check("x=[-1,0,1], 2bit symmetric -> no error", approx(np.max(np.abs(x - xq)), 0.0),
           f"max_err={np.max(np.abs(x - xq)):.3e}, scale={scale}, zero={zero}")
 
     err = reconstruction_error(x, xq)
-    check("重构误差 nmse == 0", approx(err["nmse"], 0.0, 1e-12), str(err))
+    check("reconstruction error nmse == 0", approx(err["nmse"], 0.0, 1e-12), str(err))
 
-    # 整数量化码必须落在区间内
+    # integer quantization codes must fall inside the range
     rng = np.random.default_rng(0)
     y = rng.standard_normal(1000) * 5
     for bits in (2, 3, 4, 6, 8):
         qmin, qmax = qrange(bits, True)
         q = quantize(y, bits, symmetric=True)
         ok = (q.min() >= qmin - 1e-9) and (q.max() <= qmax + 1e-9)
-        check(f"  量化码在区间内 (bits={bits})", ok, f"[{q.min()},{q.max()}] vs [{qmin},{qmax}]")
+        check(f"  quantization codes inside the range (bits={bits})", ok,
+              f"[{q.min()},{q.max()}] vs [{qmin},{qmax}]")
 
 
 def test_error_monotone_in_bits() -> None:
-    print("\n[3] 重构误差随位宽单调下降")
+    print("\n[3] reconstruction error decreases monotonically with bit width")
     rng = np.random.default_rng(1)
     x = rng.standard_normal((64, 32)) * 2.0
     ladder = [2, 3, 4, 6, 8]
     errs = [reconstruction_error(x, quantize_dequantize(x, b, True)[0])["nmse"] for b in ladder]
     print("      nmse:", "  ".join(f"{b}bit={e:.4f}" for b, e in zip(ladder, errs)))
     mono = all(errs[i] > errs[i + 1] for i in range(len(errs) - 1))
-    check("nmse 严格单调下降", mono, str(errs))
-    check("8bit 的 nmse 远小于 2bit", errs[-1] < errs[0] / 10, f"{errs[-1]:.5f} vs {errs[0]:.5f}")
+    check("nmse strictly decreasing", mono, str(errs))
+    check("nmse at 8bit is far below 2bit", errs[-1] < errs[0] / 10,
+          f"{errs[-1]:.5f} vs {errs[0]:.5f}")
 
 
 def test_per_channel_vs_per_tensor() -> None:
-    print("\n[4] per-channel 不劣于 per-tensor（通道尺度差异大时明显更好）")
+    print("\n[4] per-channel is no worse than per-tensor "
+          "(clearly better when channel scales differ a lot)")
     rng = np.random.default_rng(2)
-    # 构造通道尺度差异极大的权重矩阵（真实网络里很常见）
+    # build a weight matrix whose channel scales differ wildly
+    # (very common in real networks)
     scales = np.array([0.01, 0.1, 1.0, 10.0])[:, None]
     W = rng.standard_normal((4, 64)) * scales
 
@@ -148,54 +152,58 @@ def test_per_channel_vs_per_tensor() -> None:
             f"pc={e_pc:.5f} pt={e_pt:.5f}",
         )
 
-    # 全局 NMSE 是按能量加权的，大尺度通道会主导数字，
-    # 掩盖"小尺度通道被量化摧毁"这件事。用逐通道无权 NMSE 才看得清。
+    # The global NMSE is energy weighted, so large-scale channels dominate the
+    # number and hide the fact that small-scale channels get destroyed by
+    # quantization. Only a per-channel unweighted NMSE makes it visible.
     xq_pt = quantize_dequantize(W, 4, True, None)[0]
     xq_pc = quantize_dequantize(W, 4, True, 0)[0]
     cw_pt = channel_wise_nmse(W, xq_pt, axis=0)
     cw_pc = channel_wise_nmse(W, xq_pc, axis=0)
-    print(f"      逐通道无权 NMSE @4bit: per-tensor={cw_pt:.4f}  per-channel={cw_pc:.4f}")
-    check("  逐通道无权 NMSE：per-channel 至少好 10 倍", cw_pc * 10 < cw_pt,
-          f"pc={cw_pc:.6f} pt={cw_pt:.6f} 比值={cw_pt / max(cw_pc, 1e-15):.1f}x")
+    print(f"      per-channel unweighted NMSE @4bit: per-tensor={cw_pt:.4f}  "
+          f"per-channel={cw_pc:.4f}")
+    check("  per-channel unweighted NMSE: per-channel is at least 10x better",
+          cw_pc * 10 < cw_pt,
+          f"pc={cw_pc:.6f} pt={cw_pt:.6f} ratio={cw_pt / max(cw_pc, 1e-15):.1f}x")
 
-    # 而且 per-channel 下每个通道都应被合理表示（不该有通道被彻底摧毁）
+    # and under per-channel every channel should be represented reasonably
+    # (no channel should be destroyed outright)
     ax = 1
     per_ch = np.mean((W - xq_pc) ** 2, axis=ax) / (np.mean(W ** 2, axis=ax) + 1e-12)
-    check("  4bit per-channel 下没有通道被完全摧毁",
+    check("  no channel is completely destroyed at 4bit per-channel",
           bool(np.all(per_ch < 0.5)), str(np.round(per_ch, 4).tolist()))
 
 
 def test_asymmetric_for_skewed() -> None:
-    print("\n[5] 单边分布上非对称优于对称")
+    print("\n[5] asymmetric beats symmetric on one-sided distributions")
     rng = np.random.default_rng(3)
-    x = rng.exponential(scale=1.0, size=20000)  # 全正、长尾
+    x = rng.exponential(scale=1.0, size=20000)  # all positive, long tailed
     for bits in (3, 4, 6):
         e_sym = reconstruction_error(x, quantize_dequantize(x, bits, True)[0])["nmse"]
         e_asym = reconstruction_error(x, quantize_dequantize(x, bits, False)[0])["nmse"]
         check(
-            f"  bits={bits}: 非对称 <= 对称",
+            f"  bits={bits}: asymmetric <= symmetric",
             e_asym <= e_sym + 1e-12,
             f"sym={e_sym:.6f} asym={e_asym:.6f}",
         )
 
 
 def test_edge_cases() -> None:
-    print("\n[6] 边界情况")
+    print("\n[6] edge cases")
     z = np.zeros((8, 8))
     xq, scale, zero = quantize_dequantize(z, 4, True)
-    check("全零张量不产生 NaN/Inf", np.all(np.isfinite(xq)), str(xq.flat[:3]))
+    check("all-zero tensor produces no NaN/Inf", np.all(np.isfinite(xq)), str(xq.flat[:3]))
 
     const = np.full((4, 4), 3.5)
     xq2, _, _ = quantize_dequantize(const, 4, True)
-    check("常量张量不产生 NaN/Inf", np.all(np.isfinite(xq2)))
+    check("constant tensor produces no NaN/Inf", np.all(np.isfinite(xq2)))
 
     g = np.linspace(-1, 1, 1000).reshape(10, 100)
     scale_s, zero_s = quant_params(g, 4, True, None)
     scale_c, zero_c = quant_params(g, 4, True, 0)
-    check("per-channel 的 scale 形状可广播", scale_c.shape == (10, 1), str(scale_c.shape))
-    check("per-tensor 的 scale 是标量状", np.size(scale_s) == 1, str(np.shape(scale_s)))
-    check("per-channel 的 zero_point 形状一致", zero_c.shape == (10, 1), str(zero_c.shape))
-    check("对称量化 zero_point 恒为 0", float(np.max(np.abs(zero_s))) == 0.0
+    check("per-channel scale shape is broadcastable", scale_c.shape == (10, 1), str(scale_c.shape))
+    check("per-tensor scale is scalar-like", np.size(scale_s) == 1, str(np.shape(scale_s)))
+    check("per-channel zero_point shape is consistent", zero_c.shape == (10, 1), str(zero_c.shape))
+    check("symmetric quantization always has zero_point 0", float(np.max(np.abs(zero_s))) == 0.0
           and float(np.max(np.abs(zero_c))) == 0.0)
 
     raised = False
@@ -203,56 +211,60 @@ def test_edge_cases() -> None:
         quant_params(np.array([]), 4)
     except ValueError:
         raised = True
-    check("空数组抛 ValueError", raised)
+    check("empty array raises ValueError", raised)
 
 
 def test_error_curve() -> None:
-    print("\n[7] 误差曲线接口")
+    print("\n[7] error curve interface")
     rng = np.random.default_rng(4)
     x = rng.standard_normal((16, 32))
     curve = quant_error_curve(x, [2, 4, 8])
-    check("返回 3 个位宽", len(curve) == 3, str(list(curve.keys())))
-    check("每个条目含 nmse", all("nmse" in v for v in curve.values()))
-    check("nmse 随位宽下降", curve[8]["nmse"] < curve[4]["nmse"] < curve[2]["nmse"],
+    check("returns 3 bit widths", len(curve) == 3, str(list(curve.keys())))
+    check("every entry has nmse", all("nmse" in v for v in curve.values()))
+    check("nmse decreases with bit width", curve[8]["nmse"] < curve[4]["nmse"] < curve[2]["nmse"],
           str({k: round(v["nmse"], 5) for k, v in curve.items()}))
 
-    # 位宽 < 2 且对称 → 跳过而不是崩溃
+    # bit width < 2 with symmetric=True -> skip rather than crash
     curve2 = quant_error_curve(x, [1, 2, 4], symmetric=True)
-    check("对称模式下 bits=1 被跳过", 1 not in curve2, str(list(curve2.keys())))
+    check("bits=1 is skipped in symmetric mode", 1 not in curve2, str(list(curve2.keys())))
 
 
 # ==========================================================================
-# 8. 秩相关
+# 8. rank correlation
 # ==========================================================================
 def test_rankdata() -> None:
-    print("\n[8] 平均秩")
+    print("\n[8] average ranks")
     r = rankdata_average([3.0, 1.0, 2.0])
-    check("无并列: [3,1,2] → [3,1,2]", np.allclose(r, [3, 1, 2]), str(r))
+    check("no ties: [3,1,2] -> [3,1,2]", np.allclose(r, [3, 1, 2]), str(r))
 
     r = rankdata_average([10.0, 20.0, 20.0, 30.0])
-    check("有并列: 取平均秩 → [1, 2.5, 2.5, 4]", np.allclose(r, [1, 2.5, 2.5, 4]), str(r))
+    check("with ties: average ranks -> [1, 2.5, 2.5, 4]", np.allclose(r, [1, 2.5, 2.5, 4]), str(r))
 
     r = rankdata_average([5.0, 5.0, 5.0])
-    check("全并列 → 全为 2", np.allclose(r, [2, 2, 2]), str(r))
+    check("all tied -> all 2", np.allclose(r, [2, 2, 2]), str(r))
 
     rng = np.random.default_rng(5)
     a = rng.standard_normal(50)
-    check("秩与排序一致", np.array_equal(np.argsort(rankdata_average(a)), np.argsort(a)))
+    check("ranks agree with the sort order",
+          np.array_equal(np.argsort(rankdata_average(a)), np.argsort(a)))
 
 
 def test_spearman() -> None:
     print("\n[9] Spearman")
     a = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    check("严格单调递增 → ρ=1", approx(spearman(a, a ** 3), 1.0, 1e-9), str(spearman(a, a ** 3)))
-    check("严格单调递减 → ρ=-1", approx(spearman(a, -a), -1.0, 1e-9), str(spearman(a, -a)))
+    check("strictly increasing -> rho=1", approx(spearman(a, a ** 3), 1.0, 1e-9),
+          str(spearman(a, a ** 3)))
+    check("strictly decreasing -> rho=-1", approx(spearman(a, -a), -1.0, 1e-9),
+          str(spearman(a, -a)))
 
     b = a + 100.0
-    check("平移不变 → ρ=1", approx(spearman(a, b), 1.0, 1e-9), str(spearman(a, b)))
+    check("shift invariant -> rho=1", approx(spearman(a, b), 1.0, 1e-9), str(spearman(a, b)))
 
     c = np.exp(a)
-    check("非线性但单调 → ρ=1", approx(spearman(a, c), 1.0, 1e-9), str(spearman(a, c)))
+    check("nonlinear but monotone -> rho=1", approx(spearman(a, c), 1.0, 1e-9),
+          str(spearman(a, c)))
 
-    # 与 scipy 交叉验证（如果装了）
+    # cross-check against scipy (when installed)
     try:
         from scipy.stats import spearmanr  # type: ignore
 
@@ -263,23 +275,25 @@ def test_spearman() -> None:
             ours = spearman(u, v)
             theirs = float(spearmanr(u, v).statistic)
             if not approx(ours, theirs, 1e-9):
-                check("与 scipy.stats.spearmanr 一致", False, f"{ours} vs {theirs}")
+                check("agrees with scipy.stats.spearmanr", False, f"{ours} vs {theirs}")
                 return
-        check("与 scipy.stats.spearmanr 一致（5 组随机样本）", True)
+        check("agrees with scipy.stats.spearmanr (5 random samples)", True)
     except ImportError:
-        check("与 scipy 交叉验证（scipy 未安装，跳过）", True, "skipped")
+        check("cross-check against scipy (scipy not installed, skipped)", True, "skipped")
 
 
 def test_permutation_test() -> None:
-    print("\n[10] 置换检验")
+    print("\n[10] permutation test")
     rng = np.random.default_rng(7)
 
     x = rng.standard_normal(12)
-    # 强相关
+    # strongly correlated
     rho, p = permutation_test(x, x * 2 + 1, n_permutations=2000, seed=1)
-    check("完全相关 → ρ≈1, p 很小", approx(rho, 1.0, 1e-9) and p < 0.01, f"rho={rho}, p={p}")
+    check("perfectly correlated -> rho~=1, p tiny",
+          approx(rho, 1.0, 1e-9) and p < 0.01, f"rho={rho}, p={p}")
 
-    # 完全独立：跑多次，看 p 值是否大致均匀（不应该总是小）
+    # fully independent: repeat and check the p-values are roughly uniform
+    # (they should not always be small)
     ps = []
     for s in range(20):
         y = rng.standard_normal(12)
@@ -287,23 +301,28 @@ def test_permutation_test() -> None:
         ps.append(pv)
     frac_small = float(np.mean(np.array(ps) < 0.05))
     check(
-        "独立数据 → 拒绝率接近名义 5%（不严重高估显著性）",
+        "independent data -> rejection rate near the nominal 5% "
+        "(significance is not badly overstated)",
         frac_small <= 0.30,
-        f"20 次里 {int(frac_small * 20)} 次 p<0.05，p 值={np.round(ps, 3).tolist()}",
+        f"{int(frac_small * 20)} of 20 runs have p<0.05, "
+        f"p-values={np.round(ps, 3).tolist()}",
     )
 
     lo, hi = bootstrap_ci(x, x * 2 + 1, n_boot=500, seed=2)
-    check("完全相关时 CI 收敛到 1", lo > 0.9 and hi <= 1.0 + 1e-9, f"[{lo:.3f}, {hi:.3f}]")
+    check("CI converges to 1 for perfect correlation",
+          lo > 0.9 and hi <= 1.0 + 1e-9, f"[{lo:.3f}, {hi:.3f}]")
 
-    check("Kendall τ-b 完全一致 → 1", approx(kendall_tau_b(x, x * 2 + 1), 1.0, 1e-9))
-    check("Kendall τ-b 完全反向 → -1", approx(kendall_tau_b(x, -x), -1.0, 1e-9))
+    check("Kendall tau-b perfectly concordant -> 1",
+          approx(kendall_tau_b(x, x * 2 + 1), 1.0, 1e-9))
+    check("Kendall tau-b perfectly reversed -> -1",
+          approx(kendall_tau_b(x, -x), -1.0, 1e-9))
 
 
 # ==========================================================================
-# 11. 等重构误差臂
+# 11. equal reconstruction error arms
 # ==========================================================================
 def _fake_err_curves(n_layers: int, ladder=(2, 3, 4, 6, 8), seed=0):
-    """构造形状合理的误差曲线：随位宽单调下降，层间有差异。"""
+    """Build a plausible error curve: decreasing in bit width, varied across layers."""
     rng = np.random.default_rng(seed)
     base = rng.uniform(0.05, 0.5, size=(n_layers, 1))
     shape = np.array([[1.0, 0.6, 0.35, 0.15, 0.05]], dtype=np.float64)
@@ -311,7 +330,7 @@ def _fake_err_curves(n_layers: int, ladder=(2, 3, 4, 6, 8), seed=0):
 
 
 def test_greedy_budget() -> None:
-    print("\n[11] 贪心分配满足预算")
+    print("\n[11] greedy allocation respects the budget")
     E = _fake_err_curves(8, seed=11)
     s = np.linspace(0.1, 1.0, 8)
     costs = np.ones(8)
@@ -319,98 +338,107 @@ def test_greedy_budget() -> None:
     for ratio in (0.3, 0.5, 0.8, 1.0):
         alloc = greedy_allocate(s, E, [2, 3, 4, 6, 8], budget_ratio=ratio, layer_costs=costs)
         check(
-            f"  ratio={ratio}: 预算未被突破",
+            f"  ratio={ratio}: budget not exceeded",
             alloc.budget_used <= alloc.budget_total + 1e-6,
             f"used={alloc.budget_used:.2f} total={alloc.budget_total:.2f}",
         )
         check(
-            f"  ratio={ratio}: 位宽都在阶梯上",
+            f"  ratio={ratio}: every bit width is on the ladder",
             set(np.unique(alloc.bits)).issubset({2, 3, 4, 6, 8}),
             str(alloc.bits.tolist()),
         )
 
-    # 预算越大，平均位宽越高
+    # a larger budget gives a higher mean bit width
     means = [
         greedy_allocate(s, E, [2, 3, 4, 6, 8], budget_ratio=r, layer_costs=costs).bits.mean()
         for r in (0.2, 0.5, 0.9)
     ]
-    check("预算越大平均位宽越高", means[0] <= means[1] <= means[2], str(means))
+    check("larger budget gives a higher mean bit width",
+          means[0] <= means[1] <= means[2], str(means))
 
 
 def test_greedy_puts_bits_where_sensitive() -> None:
-    print("\n[12] 贪心把位宽优先给敏感层")
+    print("\n[12] greedy gives bits to the sensitive layers first")
     E = _fake_err_curves(6, seed=12)
     costs = np.ones(6)
-    s = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 5.0])  # 只有最后一层敏感
+    s = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 5.0])  # only the last layer is sensitive
 
     alloc = greedy_allocate(s, E, [2, 3, 4, 6, 8], budget_ratio=0.5, layer_costs=costs)
-    check("敏感层拿到最高位宽", alloc.bits[-1] == alloc.bits.max(), str(alloc.bits.tolist()))
-    check("不敏感层停在最低位宽", np.all(alloc.bits[:-1] == 2), str(alloc.bits.tolist()))
+    check("the sensitive layer gets the highest bit width",
+          alloc.bits[-1] == alloc.bits.max(), str(alloc.bits.tolist()))
+    check("insensitive layers stay at the lowest bit width",
+          np.all(alloc.bits[:-1] == 2), str(alloc.bits.tolist()))
 
-    # 敏感性全相等时，分配应当接近均匀
+    # when all sensitivities are equal the allocation should be near uniform
     s_eq = np.ones(6)
     alloc_eq = greedy_allocate(s_eq, E, [2, 3, 4, 6, 8], budget_ratio=0.6, layer_costs=costs)
     spread = int(alloc_eq.bits.max() - alloc_eq.bits.min())
-    check("敏感性相等时分配较均匀（最大最小位宽差 <= 2 档）", spread <= 4,
+    check("equal sensitivities give a nearly uniform allocation "
+          "(max-min bit width <= 2 rungs)", spread <= 4,
           str(alloc_eq.bits.tolist()))
 
 
 def test_noise_floor() -> None:
-    print("\n[13] 负敏感性被截断（避免把位宽从噪声层挪走）")
+    print("\n[13] negative sensitivity is clipped (so bits are not moved "
+          "away from noisy layers)")
     E = _fake_err_curves(5, seed=13)
-    s = np.array([-1.0, -1.0, -1.0, -1.0, -1.0])  # 全是"量化反而变好"的噪声
+    # all pure noise where quantizing happens to help
+    s = np.array([-1.0, -1.0, -1.0, -1.0, -1.0])
     alloc = greedy_allocate(s, E, [2, 3, 4, 6, 8], budget_ratio=0.9, layer_costs=np.ones(5))
-    check("全负敏感性 → 全部停在最低位宽（不浪费预算）",
+    check("all-negative sensitivity -> everything stays at the lowest bit "
+          "width (no wasted budget)",
           np.all(alloc.bits == 2), str(alloc.bits.tolist()))
 
     s_mix = np.array([-1.0, 0.0, 1.0, 2.0, 3.0])
     alloc_mix = greedy_allocate(s_mix, E, [2, 3, 4, 6, 8], budget_ratio=0.6, layer_costs=np.ones(5))
-    check("负/零敏感性的层不拿额外位宽",
+    check("layers with negative/zero sensitivity get no extra bit width",
           np.all(alloc_mix.bits[:2] == 2), str(alloc_mix.bits.tolist()))
 
 
 def test_uniform_allocation() -> None:
-    print("\n[14] 均匀分配")
+    print("\n[14] uniform allocation")
     E = _fake_err_curves(4, seed=14)
     s = np.ones(4)
     alloc = uniform_allocate(4, [2, 3, 4, 6, 8], budget_ratio=0.5,
                              layer_costs=np.ones(4), sensitivity=s, err_curves=E)
-    check("所有层同位宽", len(set(alloc.bits.tolist())) == 1, str(alloc.bits.tolist()))
-    check("预算不超", alloc.budget_used <= alloc.budget_total + 1e-6,
+    check("all layers get the same bit width",
+          len(set(alloc.bits.tolist())) == 1, str(alloc.bits.tolist()))
+    check("budget not exceeded", alloc.budget_used <= alloc.budget_total + 1e-6,
           f"{alloc.budget_used} <= {alloc.budget_total}")
 
 
 def test_equal_error_arm() -> None:
-    print("\n[15] 三臂对比")
+    print("\n[15] three-arm comparison")
     E = _fake_err_curves(10, seed=15)
     ladder = [2, 3, 4, 6, 8]
     costs = np.ones(10)
 
-    # (a) 两个域敏感性完全一致 → agnostic == oracle，不知道域没有代价
+    # (a) identical sensitivities in both domains -> agnostic == oracle;
+    #     not knowing the domain costs nothing
     s = np.linspace(0.1, 1.0, 10)
     r_same = run_equal_error_arm(s, s.copy(), E, ladder, 0.6, costs)
-    check("敏感性一致时 agnostic == oracle",
+    check("agnostic == oracle when the sensitivities match",
           np.array_equal(r_same.agnostic.bits, r_same.oracle.bits),
           f"{r_same.agnostic.bits.tolist()} vs {r_same.oracle.bits.tolist()}")
-    check("敏感性一致时 域无知代价 ≈ 0",
+    check("cost of domain ignorance ~= 0 when the sensitivities match",
           abs(r_same.cost_of_domain_ignorance) < 1e-12,
           str(r_same.cost_of_domain_ignorance))
 
-    # (b) 两个域敏感性完全反转 → 应当产生正的域无知代价
+    # (b) fully reversed sensitivities -> should give a positive cost
     s_rev = s[::-1].copy()
     r_rev = run_equal_error_arm(s, s_rev, E, ladder, 0.6, costs)
-    check("排序反转时 agnostic != oracle",
+    check("agnostic != oracle when the ranking is reversed",
           not np.array_equal(r_rev.agnostic.bits, r_rev.oracle.bits),
           f"{r_rev.agnostic.bits.tolist()} vs {r_rev.oracle.bits.tolist()}")
-    check("排序反转时 域无知代价 > 0",
+    check("cost of domain ignorance > 0 when the ranking is reversed",
           r_rev.cost_of_domain_ignorance > 0,
           str(r_rev.cost_of_domain_ignorance))
-    check("ranking_flipped 标记正确", r_rev.ranking_flipped is True)
+    check("ranking_flipped flag is set correctly", r_rev.ranking_flipped is True)
     print(f"      verdict: {r_rev.verdict()}")
 
-    # (c) 预测损伤的一致性
+    # (c) consistency of the predicted damage
     d = predicted_damage(r_rev.oracle.bits, s_rev, E, ladder)
-    check("三臂损伤用目标域敏感性口径一致",
+    check("the arm damage agrees when computed with the target-domain sensitivity",
           approx(d, r_rev.oracle.predicted_damage, 1e-9),
           f"{d} vs {r_rev.oracle.predicted_damage}")
 
@@ -418,7 +446,7 @@ def test_equal_error_arm() -> None:
 # ==========================================================================
 def main() -> int:
     print("=" * 74)
-    print("  quant-sens 核心单元测试（纯 numpy，不需要 torch）")
+    print("  quant-sens core unit tests (pure numpy, no torch needed)")
     print("=" * 74)
 
     tests = [
@@ -443,16 +471,16 @@ def main() -> int:
         try:
             t()
         except Exception as exc:  # noqa: BLE001
-            print(f"\n  [ERROR] {t.__name__} 抛出异常: {exc}")
+            print(f"\n  [ERROR] {t.__name__} raised: {exc}")
             traceback.print_exc()
             _RESULTS.append((t.__name__, False, str(exc)))
 
     n_total = len(_RESULTS)
     n_fail = sum(1 for _, ok, _ in _RESULTS if not ok)
     print("\n" + "=" * 74)
-    print(f"  合计 {n_total} 项检查，通过 {n_total - n_fail}，失败 {n_fail}")
+    print(f"  {n_total} checks total, {n_total - n_fail} passed, {n_fail} failed")
     if n_fail:
-        print("  失败项：")
+        print("  failures:")
         for name, ok, detail in _RESULTS:
             if not ok:
                 print(f"    - {name}  {detail}")

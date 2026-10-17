@@ -260,7 +260,7 @@
       "cost_of_domain_ignorance": 0.21328895201704562,
       "relative_cost_of_ignorance": 1.022533597939405,
       "ranking_flipped": true,
-      "verdict": "按源域敏感性分配比按目标域分配多付出 0.2133 的预测损伤（相对 +102.3%）→ **不存在域无关的最优比特分配**"
+      "verdict": "allocating by source-domain sensitivity pays 0.2133 more predicted damage than allocating by target-domain sensitivity (relative +102.3%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "budget_ratio": 0.6,
@@ -325,7 +325,7 @@
       "cost_of_domain_ignorance": 0.21363768737611907,
       "relative_cost_of_ignorance": 1.0232922674253853,
       "ranking_flipped": true,
-      "verdict": "按源域敏感性分配比按目标域分配多付出 0.2136 的预测损伤（相对 +102.3%）→ **不存在域无关的最优比特分配**"
+      "verdict": "allocating by source-domain sensitivity pays 0.2136 more predicted damage than allocating by target-domain sensitivity (relative +102.3%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "budget_ratio": 0.8,
@@ -390,7 +390,7 @@
       "cost_of_domain_ignorance": 0.2136396126545186,
       "relative_cost_of_ignorance": 1.023296732724498,
       "ranking_flipped": true,
-      "verdict": "按源域敏感性分配比按目标域分配多付出 0.2136 的预测损伤（相对 +102.3%）→ **不存在域无关的最优比特分配**"
+      "verdict": "allocating by source-domain sensitivity pays 0.2136 more predicted damage than allocating by target-domain sensitivity (relative +102.3%) -> **no domain-independent optimal bit allocation exists**"
     }
   ],
   "proxies": [

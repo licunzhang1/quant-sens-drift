@@ -89,7 +89,7 @@
       "ci_high": 0.9615,
       "tau_b": 0.4667,
       "significant": true,
-      "verdict": "ρ=+0.673（p=0.0368）：排序中度一致 → 部分可迁移"
+      "verdict": "rho=+0.673 (p=0.0368): rankings moderately consistent -> partly transferable"
     },
     "acc": {
       "n_layers": 10,
@@ -99,7 +99,7 @@
       "ci_high": 1.0,
       "tau_b": 0.3376,
       "significant": false,
-      "verdict": "ρ=+0.478 但不显著（p=0.153），不能拒绝'两域敏感性排序独立'的原假设"
+      "verdict": "rho=+0.478 but not significant (p=0.153); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent"
     }
   },
   "elapsed_s": 191.44

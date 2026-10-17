@@ -7,5 +7,6 @@ scikit-learn>=1.3
 pyyaml>=6.0
 tqdm>=4.66
 
-# 训练与模型部分需要（科学核心不需要）
+# Only needed for training and the model code; the scientific core does not
+# require it.
 torch>=2.1

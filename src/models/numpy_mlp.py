@@ -1,16 +1,22 @@
-"""纯 numpy 的参考 MLP —— 用于**独立验证**整条实验管线。
+"""Pure-numpy reference MLP -- used to **independently validate** the pipeline.
 
-存在的意义
-----------
-项目的科学结论必须能被独立复核。这个模块不含任何深度学习框架依赖，
-用最朴素的写法实现"逐层选择性量化 → 前向 → 测指标"这条链路。
+Why it exists
+-------------
+The scientific conclusions of the project have to be independently checkable.
+This module pulls in no deep-learning framework; it implements the chain
+"layer-wise selective quantization -> forward pass -> metric" in the most
+straightforward way possible.
 
-用途：
-  1. ``tests/smoke_pipeline.py`` 用它跑通端到端流程（几秒内完成）；
-  2. 作为 torch 版本的**语义参照** —— 两边对同一份数据应给出同量级的结果；
-  3. 答辩时可以说："核心管线有一个不依赖框架的参考实现。"
+Uses:
+  1. ``tests/smoke_pipeline.py`` runs the end-to-end flow with it (finishes in
+     a few seconds);
+  2. it is the **semantic reference** for the torch version -- both should give
+     results of the same order on the same data;
+  3. in a defense one can say: "the core pipeline has a reference
+     implementation that depends on no framework."
 
-它不是用来刷精度的，结构刻意保持最小（MLP + ReLU + softmax）。
+It is not meant for chasing accuracy; the structure is deliberately minimal
+(MLP + ReLU + softmax).
 """
 
 from __future__ import annotations
@@ -26,11 +32,11 @@ __all__ = ["NumpyMLP", "quantized_layer"]
 
 
 class NumpyMLP:
-    """最小 MLP：``dims = [in_dim, h1, ..., n_classes]``。"""
+    """Minimal MLP: ``dims = [in_dim, h1, ..., n_classes]``."""
 
     def __init__(self, dims: Sequence[int], seed: int = 0):
         if len(dims) < 2:
-            raise ValueError("dims 至少要有 2 项")
+            raise ValueError("dims needs at least 2 entries")
         self.dims = [int(d) for d in dims]
         self.n_layers = len(self.dims) - 1
         rng = np.random.default_rng(seed)
@@ -38,24 +44,24 @@ class NumpyMLP:
         self.params: Dict[str, np.ndarray] = {}
         for i in range(self.n_layers):
             fan_in = self.dims[i]
-            # He 初始化
+            # He initialization
             W = rng.standard_normal((self.dims[i + 1], fan_in)) * np.sqrt(2.0 / fan_in)
             b = np.zeros(self.dims[i + 1], dtype=np.float64)
             self.params[f"fc{i}.weight"] = W.astype(np.float64)
             self.params[f"fc{i}.bias"] = b
 
-    # ------------------------------------------------------------------ 结构
+    # ------------------------------------------------------------ structure
     def weight_layer_names(self) -> List[str]:
-        """可量化的权重层名（供敏感性分析遍历）。"""
+        """Names of the quantizable weight layers (for sensitivity sweeps)."""
         return [f"fc{i}.weight" for i in range(self.n_layers)]
 
     def layer_costs(self) -> np.ndarray:
-        """每层的参数量，作为比特预算的权重。"""
+        """Parameter count per layer, used as the weight of the bit budget."""
         return np.array(
             [self.params[n].size for n in self.weight_layer_names()], dtype=np.float64
         )
 
-    # ------------------------------------------------------------------ 前向
+    # -------------------------------------------------------------- forward
     def forward(self, x: np.ndarray, return_cache: bool = False):
         h = np.asarray(x, dtype=np.float64).reshape(x.shape[0], -1)
         cache = []
@@ -80,7 +86,7 @@ class NumpyMLP:
         logits = self.forward(x)
         return float(np.mean(np.argmax(logits, axis=1) == y))
 
-    # ------------------------------------------------------------------ 训练
+    # ------------------------------------------------------------- training
     def train(
         self,
         x: np.ndarray,
@@ -93,7 +99,7 @@ class NumpyMLP:
         seed: int = 0,
         verbose: bool = False,
     ) -> List[float]:
-        """Adam + softmax 交叉熵。返回每轮的平均损失。"""
+        """Adam with softmax cross-entropy. Returns the mean loss per epoch."""
         x = np.asarray(x, dtype=np.float64)
         y = np.asarray(y, dtype=np.int64)
         n = x.shape[0]
@@ -143,14 +149,15 @@ class NumpyMLP:
             grads[f"fc{i}.weight"] = d.T @ h_in
             grads[f"fc{i}.bias"] = d.sum(axis=0)
             if i > 0:
-                # 反传到上一层的 ReLU 之前：掩码由上一层的预激活决定
+                # backprop to before the previous layer's ReLU: the mask
+                # comes from that layer's pre-activation
                 dh = d @ self.params[f"fc{i}.weight"]
                 d = dh * (cache[i - 1][1] > 0)
         return grads
 
 
 # --------------------------------------------------------------------------
-# 选择性量化
+# selective quantization
 # --------------------------------------------------------------------------
 @contextmanager
 def quantized_layer(
@@ -161,12 +168,13 @@ def quantized_layer(
     per_channel: bool = True,
     symmetric: bool = True,
 ) -> Iterator[None]:
-    """临时把 ``layer_name`` 量化到 ``bits`` 位，退出时恢复。
+    """Temporarily quantize ``layer_name`` to ``bits`` bits, restoring on exit.
 
-    这是 numpy 版的量化作用域，与 torch 版 ``fake_quant.quantize_model`` 语义一致。
+    This is the numpy quantization scope; it matches the semantics of the torch
+    ``fake_quant.quantize_model``.
     """
     if layer_name not in model.params:
-        raise KeyError(f"模型中没有参数 {layer_name!r}")
+        raise KeyError(f"no parameter {layer_name!r} in the model")
     orig = model.params[layer_name]
     axis = 0 if (per_channel and orig.ndim > 1) else None
     xq, _, _ = quantize_dequantize(orig, bits, symmetric, axis)
@@ -185,7 +193,10 @@ def quantized_all_weights(
     per_channel: bool = True,
     symmetric: bool = True,
 ) -> Iterator[None]:
-    """把所有**权重**（不含 bias）量化到 ``bits`` 位。用于全模型量化基线。"""
+    """Quantize all **weights** (bias excluded) to ``bits`` bits.
+
+    Used for the full-model quantization baseline.
+    """
     saved = {}
     for name in model.weight_layer_names():
         orig = model.params[name]
@@ -200,7 +211,7 @@ def quantized_all_weights(
 
 
 # --------------------------------------------------------------------------
-# 数值工具
+# numerical helpers
 # --------------------------------------------------------------------------
 def _softmax(z: np.ndarray) -> np.ndarray:
     z = z - np.max(z, axis=1, keepdims=True)

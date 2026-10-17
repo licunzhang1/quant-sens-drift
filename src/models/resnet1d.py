@@ -1,10 +1,11 @@
-"""1D-ResNet —— 验证骨干。
+"""1D-ResNet -- the validation backbone.
 
-存在的意义是回答一个审稿人一定会问的问题：
-**"你的结论是不是只在 CLDNN 上成立？"**
-换一个结构完全不同的骨干重跑，若结论一致，说明它更可能是**架构无关**的。
+Its purpose is to answer a question every reviewer will ask:
+**"does your conclusion hold only for CLDNN?"**
+Re-running with a structurally different backbone, and obtaining the same
+conclusion, makes it more likely to be **architecture-independent**.
 
-输入 ``(N, 2, L)``，输出 ``(N, n_classes)``。
+Input ``(N, 2, L)``, output ``(N, n_classes)``.
 """
 
 from __future__ import annotations

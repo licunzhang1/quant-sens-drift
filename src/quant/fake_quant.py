@@ -1,17 +1,20 @@
-"""torch 侧的逐层选择性 fake-quant。
+"""Layer-wise selective fake-quant on the torch side.
 
-语义必须与 ``src/quant/core.py`` 的 numpy 版本**完全一致**，否则
-冒烟测试（numpy）与真实实验（torch）不可比。
+The semantics have to match the numpy version in ``src/quant/core.py``
+**exactly**, otherwise the smoke tests (numpy) and the real experiments (torch)
+are not comparable.
 
-为什么不直接用 ``torch.quantization``
-------------------------------------
-本项目需要**精确控制只量化第 l 层**、per-channel 与 per-tensor 的差别，
-以及"仅权重 / 权重+激活"的组合。框架的抽象在这些点上会挡路，
-而且不同 torch 版本的行为不一致。手写 fake-quant 只有几十行，完全可控。
+Why not use ``torch.quantization`` directly
+-------------------------------------------
+This project needs **precise control over quantizing only layer l**, over the
+per-channel versus per-tensor difference, and over the "weights only / weights +
+activations" combinations. The framework abstractions get in the way at exactly
+these points, and behaviour differs between torch versions. A hand-written
+fake-quant is a few dozen lines and fully under control.
 
-参考：Jacob et al., *Quantization and Training of Neural Networks for
-Efficient Integer-Arithmetic-Only Inference* (2018) —— 本文采用同样的
-仿射量化形式与 STE（直通估计）梯度。
+Reference: Jacob et al., *Quantization and Training of Neural Networks for
+Efficient Integer-Arithmetic-Only Inference* (2018); this work uses the same
+affine quantization form and the same STE (straight-through estimator) gradient.
 """
 
 from __future__ import annotations
@@ -38,8 +41,9 @@ _QUANTIZABLE = (nn.Linear, nn.Conv1d, nn.Conv2d)
 # STE
 # --------------------------------------------------------------------------
 class _STEQuantize(torch.autograd.Function):
-    """``round`` 的梯度处处为 0，直接用会让反向传播断掉。
-    这里用直通估计（STE）：反向时把梯度原样传过去。"""
+    """The gradient of ``round`` is zero everywhere, so using it directly breaks
+    backpropagation. The straight-through estimator (STE) is used here instead:
+    the gradient is passed through unchanged on the backward pass."""
 
     @staticmethod
     def forward(ctx, x: torch.Tensor, scale: torch.Tensor, zero: torch.Tensor,
@@ -53,7 +57,7 @@ class _STEQuantize(torch.autograd.Function):
 
 
 # --------------------------------------------------------------------------
-# 量化参数
+# quantization parameters
 # --------------------------------------------------------------------------
 def _reduce_dims(ndim: int, axis: Optional[int]) -> Optional[List[int]]:
     if axis is None:
@@ -64,10 +68,10 @@ def _reduce_dims(ndim: int, axis: Optional[int]) -> Optional[List[int]]:
 
 def _qrange(bits: int, symmetric: bool) -> Tuple[int, int]:
     if bits < 1:
-        raise ValueError(f"bits 必须 >= 1，收到 {bits}")
+        raise ValueError(f"bits must be >= 1, got {bits}")
     if symmetric:
         if bits < 2:
-            raise ValueError("对称量化在 bits=1 时无意义，请用 asymmetric")
+            raise ValueError("symmetric quantization is meaningless at bits=1; use asymmetric")
         qmax = 2 ** (bits - 1) - 1
         return -qmax, qmax
     return 0, 2 ** bits - 1
@@ -81,12 +85,13 @@ def fake_quant_tensor(
     eps: float = _EPS,
     use_ste: bool = True,
 ) -> torch.Tensor:
-    """量化后立刻反量化（fake quantization）。形状与 ``x`` 相同。
+    """Quantize then immediately dequantize (fake quantization). Shape as ``x``.
 
     Parameters
     ----------
-    per_channel_axis : None 表示 per-tensor；给整数表示沿该轴逐通道求 scale。
-        权重通常用 axis=0（输出通道），激活用 None。
+    per_channel_axis : None means per-tensor; an integer means the scale is
+        computed per channel along that axis. Weights normally use axis=0 (the
+        output-channel axis), activations use None.
     """
     if not torch.is_floating_point(x):
         x = x.float()
@@ -113,10 +118,10 @@ def fake_quant_tensor(
 
 
 # --------------------------------------------------------------------------
-# 层发现
+# layer discovery
 # --------------------------------------------------------------------------
 def quantizable_layers(model: nn.Module) -> List[str]:
-    """返回可量化的层名（按网络定义顺序）。"""
+    """Return the quantizable layer names (in network definition order)."""
     return [n for n, m in model.named_modules() if isinstance(m, _QUANTIZABLE)]
 
 
@@ -125,7 +130,7 @@ def count_parameters(model: nn.Module) -> int:
 
 
 # --------------------------------------------------------------------------
-# 量化作用域
+# quantization scopes
 # --------------------------------------------------------------------------
 def _make_act_hook(bits: int, symmetric: bool):
     def hook(_module, _inputs, output):
@@ -149,24 +154,28 @@ def quantize_model(
     only: Optional[Iterable[str]] = None,
     skip: Sequence[str] = (),
 ) -> Iterator[None]:
-    """临时把模型的权重和/或激活量化到 ``bits`` 位，退出时完整恢复。
+    """Temporarily quantize the model's weights and/or activations to ``bits``
+    bits, restoring everything fully on exit.
 
     Parameters
     ----------
-    only : 只量化这些层（None = 全部可量化层）。**逐层敏感性分析用这个。**
-    skip : 要排除的层名前缀。
-    act  : 是否同时量化激活（用前向 hook）。注意 per-channel 只对权重有意义。
+    only : quantize only these layers (None = every quantizable layer). **This is
+        what the layer-wise sensitivity analysis uses.**
+    skip : layer-name prefixes to exclude.
+    act  : whether to quantize activations as well (via forward hooks). Note that
+        per-channel only makes sense for weights.
 
     Notes
     -----
-    恢复时用 ``clone()`` 保存的原始权重写回，并且**在 finally 里执行**，
-    保证异常时模型不会被留在被污染的状态。
+    Restoration writes back the original weights saved with ``clone()``, and it
+    **runs inside a finally block**, so an exception cannot leave the model in a
+    corrupted state.
     """
     targets = set(only) if only is not None else set(quantizable_layers(model))
     if skip:
         targets = {t for t in targets if not any(t.startswith(s) for s in skip)}
     if not targets and not act:
-        # 没有可量化层时静默通过（例如整层被 skip）
+        # pass through silently when there is nothing to quantize (e.g. all skipped)
         yield
         return
 
@@ -210,7 +219,8 @@ def quantize_one_layer(
     symmetric: bool = True,
     act: bool = False,
 ) -> Iterator[None]:
-    """只量化一层。逐层敏感性矩阵的主循环用它。"""
+    """Quantize a single layer. Used by the main loop of the layer-wise
+    sensitivity matrix."""
     with quantize_model(model, bits, weight=True, act=act,
                         per_channel=per_channel, symmetric=symmetric,
                         only=[layer_name]):

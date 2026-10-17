@@ -1,17 +1,25 @@
-"""代理量：能不能用**不需要测试集**的量预测量化敏感性？
+"""Proxy quantities: can a quantity that needs **no test set** predict
+quantization sensitivity?
 
-动机
-----
-如果存在一个廉价的、与部署域无关的量（例如权重峰度）可以预测敏感性排序，
-那么"不知道部署域"的代价就可以被部分消掉 —— 这是很强的加分项。
+Motivation
+----------
+If a cheap quantity independent of the deployment domain (weight kurtosis, say)
+could predict the sensitivity ranking, then the cost of "not knowing the
+deployment domain" could be partly removed -- a strong bonus.
 
-候选代理（全部只看权重或激活的统计量，不需要标签、不需要目标域数据）
-------------------------------------------------------------------
-kurtosis       : 超额峰度。分布越尖（长尾），少量离群值支配 scale，量化越吃亏
-peak_to_rms    : max|w| / rms(w)。越大说明动态范围越集中
-dyn_range_db   : 动态范围（dB）
-level_usage    : 给定位宽下实际被用到的量化级比例（越低说明 scale 被离群值绑架）
-eff_bits       : 有效位宽 = log2(动态范围/量化步长)，"实际用上几 bit"
+Candidate proxies (statistics of the weights or activations only; no labels and
+no target-domain data needed)
+------------------------------------------------------------------------------
+kurtosis       : excess kurtosis. The peakier the distribution (heavy tails),
+                 the more a few outliers dominate the scale, and the more
+                 quantization loses
+peak_to_rms    : max|w| / rms(w). Larger means the dynamic range is more
+                 concentrated
+dyn_range_db   : dynamic range (dB)
+level_usage    : fraction of the quantization levels actually used at a given
+                 bit width (lower means the scale is held hostage by outliers)
+eff_bits       : effective bit width = log2(dynamic range / quantization step),
+                 "how many bits are actually used"
 """
 
 from __future__ import annotations
@@ -37,7 +45,7 @@ _EPS = 1e-12
 
 
 def excess_kurtosis(x: np.ndarray) -> float:
-    """超额峰度（正态分布为 0）。"""
+    """Excess kurtosis (0 for a normal distribution)."""
     x = np.asarray(x, dtype=np.float64).ravel()
     if x.size < 4:
         return float("nan")
@@ -70,7 +78,10 @@ def dynamic_range_db(x: np.ndarray, eps: float = _EPS) -> float:
 
 
 def level_usage(x: np.ndarray, bits: int, symmetric: bool = True) -> float:
-    """给定位宽下，非零量化级被用到的比例。越接近 1 说明 scale 适配得越好。"""
+    """Fraction of the non-zero quantization levels used at a given bit width.
+
+    Closer to 1 means the scale fits the tensor better.
+    """
     from ..quant.core import qrange, quantize
 
     x = np.asarray(x, dtype=np.float64)
@@ -85,14 +96,16 @@ def level_usage(x: np.ndarray, bits: int, symmetric: bool = True) -> float:
 
 
 def effective_bits(x: np.ndarray, eps: float = _EPS) -> float:
-    """有效位宽：动态范围 / 噪声底 决定实际能分辨多少级。"""
+    """Effective bit width: dynamic range / noise floor decides how many levels
+    can actually be resolved."""
     x = np.asarray(x, dtype=np.float64).ravel()
     if x.size < 2:
         return float("nan")
     hi = np.max(np.abs(x))
     if hi < eps:
         return float("nan")
-    # 用相邻差分的尺度作为"可分辨最小步长"的代理
+    # use the scale of adjacent differences as a proxy for the smallest
+    # resolvable step
     xs = np.sort(x)
     d = np.diff(xs)
     d = d[d > eps]
@@ -105,7 +118,7 @@ def effective_bits(x: np.ndarray, eps: float = _EPS) -> float:
 
 
 def proxy_vector(x: np.ndarray, bits: int = 4, symmetric: bool = True) -> Dict[str, float]:
-    """单个张量的全部代理量。"""
+    """All proxy quantities of a single tensor."""
     return {
         "kurtosis": excess_kurtosis(x),
         "peak_to_rms": peak_to_rms(x),
@@ -124,7 +137,7 @@ def proxy_matrix(
     symmetric: bool = True,
     keys: Optional[Iterable[str]] = None,
 ) -> Tuple[Dict[str, np.ndarray], List[str]]:
-    """``{layer: tensor}`` → ``({proxy_name: (n_layers,)}, layer_names)``。"""
+    """``{layer: tensor}`` -> ``({proxy_name: (n_layers,)}, layer_names)``."""
     names = list(layer_tensors.keys())
     rows = [proxy_vector(np.asarray(layer_tensors[n]), bits, symmetric) for n in names]
     if not rows:
@@ -142,9 +155,10 @@ def correlate_with_sensitivity(
     n_permutations: int = 5000,
     seed: int = 42,
 ) -> List[Dict[str, object]]:
-    """把每个代理量与敏感性做 Spearman 相关（含置换检验）。
+    """Correlate every proxy quantity with the sensitivity (Spearman with a
+    permutation test).
 
-    返回按 |ρ| 降序排列的列表。
+    Returns a list sorted by descending |rho|.
     """
     from .rank_corr import permutation_test
 

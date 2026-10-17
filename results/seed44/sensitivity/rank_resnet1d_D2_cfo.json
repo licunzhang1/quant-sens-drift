@@ -119,7 +119,7 @@
       "ci_high": -0.1274,
       "tau_b": -0.55,
       "significant": true,
-      "verdict": "ρ=-0.671（p=0.0048）：排序反转 → 跨域复用会主动损害性能"
+      "verdict": "rho=-0.671 (p=0.0048): rankings reversed -> reusing them across domains actively hurts performance"
     },
     "acc": {
       "n_layers": 16,
@@ -129,7 +129,7 @@
       "ci_high": 0.6683,
       "tau_b": 0.083,
       "significant": false,
-      "verdict": "ρ=+0.077 但不显著（p=0.771），不能拒绝'两域敏感性排序独立'的原假设"
+      "verdict": "rho=+0.077 but not significant (p=0.771); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent"
     }
   },
   "elapsed_s": 265.04

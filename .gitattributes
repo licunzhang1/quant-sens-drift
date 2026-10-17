@@ -1,13 +1,14 @@
-# 统一换行符，避免 Windows/Linux 协作时全文件 diff
+# Normalise line endings so Windows/Linux collaboration does not produce
+# whole-file diffs
 * text=auto eol=lf
 
-# 二进制文件不做换行转换
+# Binary files get no line-ending conversion
 *.png binary
 *.jpg binary
 *.npz binary
 *.pt  binary
 *.pdf binary
 
-# 生成产物在 GitHub 语言统计中折叠
+# Collapse generated artifacts in GitHub's language statistics
 docs/** linguist-documentation
 results/** linguist-generated

@@ -119,7 +119,7 @@
       "ci_high": 0.6143,
       "tau_b": 0.05,
       "significant": false,
-      "verdict": "ρ=-0.047 但不显著（p=0.863），不能拒绝'两域敏感性排序独立'的原假设"
+      "verdict": "rho=-0.047 but not significant (p=0.863); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent"
     },
     "acc": {
       "n_layers": 16,
@@ -129,7 +129,7 @@
       "ci_high": 0.5718,
       "tau_b": -0.0372,
       "significant": false,
-      "verdict": "ρ=-0.053 但不显著（p=0.845），不能拒绝'两域敏感性排序独立'的原假设"
+      "verdict": "rho=-0.052 but not significant (p=0.845); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent"
     }
   },
   "elapsed_s": 216.68

@@ -89,7 +89,7 @@
       "ci_high": 1.0,
       "tau_b": 1.0,
       "significant": true,
-      "verdict": "ρ=+1.000（p=0.0001）：排序高度一致 → 敏感性近似为架构内在属性"
+      "verdict": "rho=+1.000 (p=0.0001): rankings highly consistent -> sensitivity is close to an intrinsic property of the architecture"
     },
     "acc": {
       "n_layers": 10,
@@ -99,7 +99,7 @@
       "ci_high": 1.0,
       "tau_b": 0.7581,
       "significant": true,
-      "verdict": "ρ=+0.892（p=0.0008）：排序高度一致 → 敏感性近似为架构内在属性"
+      "verdict": "rho=+0.892 (p=0.0008): rankings highly consistent -> sensitivity is close to an intrinsic property of the architecture"
     }
   },
   "elapsed_s": 193.08

@@ -1,4 +1,4 @@
-"""torch Dataset 封装。"""
+"""torch Dataset wrappers."""
 
 from __future__ import annotations
 
@@ -12,17 +12,17 @@ __all__ = ["IQDataset", "make_loader"]
 
 
 class IQDataset(Dataset):
-    """把 ``(N, 2, L)`` 的 numpy IQ 数组包成 torch Dataset。"""
+    """Wrap an ``(N, 2, L)`` numpy IQ array as a torch Dataset."""
 
     def __init__(self, x: np.ndarray, y: np.ndarray,
                  transform: Optional[object] = None):
         x = np.asarray(x, dtype=np.float32)
         if x.ndim != 3:
-            raise ValueError(f"x 应为 (N, 2, L)，收到 {x.shape}")
+            raise ValueError(f"x should be (N, 2, L), got {x.shape}")
         self.x = torch.from_numpy(x)
         self.y = torch.from_numpy(np.asarray(y, dtype=np.int64))
         self.transform = transform
-        assert len(self.x) == len(self.y), "x 与 y 长度不一致"
+        assert len(self.x) == len(self.y), "x and y have different lengths"
 
     def __len__(self) -> int:
         return len(self.y)

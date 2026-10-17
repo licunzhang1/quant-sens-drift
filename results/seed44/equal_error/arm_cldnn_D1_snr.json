@@ -176,7 +176,7 @@
       "cost_of_domain_ignorance": 0.0,
       "relative_cost_of_ignorance": 0.0,
       "ranking_flipped": false,
-      "verdict": "域无关分配与域相关分配等价 —— 未发现'不知道部署域'的代价"
+      "verdict": "domain-independent and domain-aware allocation are equivalent -- no cost of 'not knowing the deployment domain' was found"
     },
     {
       "budget_ratio": 0.6,
@@ -223,7 +223,7 @@
       "cost_of_domain_ignorance": 0.0,
       "relative_cost_of_ignorance": 0.0,
       "ranking_flipped": false,
-      "verdict": "域无关分配与域相关分配等价 —— 未发现'不知道部署域'的代价"
+      "verdict": "domain-independent and domain-aware allocation are equivalent -- no cost of 'not knowing the deployment domain' was found"
     },
     {
       "budget_ratio": 0.8,
@@ -270,7 +270,7 @@
       "cost_of_domain_ignorance": 0.0,
       "relative_cost_of_ignorance": 0.0,
       "ranking_flipped": false,
-      "verdict": "域无关分配与域相关分配等价 —— 未发现'不知道部署域'的代价"
+      "verdict": "domain-independent and domain-aware allocation are equivalent -- no cost of 'not knowing the deployment domain' was found"
     }
   ],
   "proxies": [

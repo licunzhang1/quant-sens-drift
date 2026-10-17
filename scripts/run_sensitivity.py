@@ -1,20 +1,25 @@
-"""W5–W6 + W9–W10：逐层敏感性矩阵 + 秩稳定性 ρ。
+"""W5-W6 + W9-W10: per-layer sensitivity matrix + rank stability rho.
 
     python scripts/run_sensitivity.py --config configs/base.yaml --shift D1_snr
     python scripts/run_sensitivity.py --config configs/base.yaml --shift D1_snr --backbone resnet1d
 
-流程
-----
-1. 载入 ``results/baseline/<backbone>.pt``
-2. 在 **Domain A** 与**目标域**上各算一份逐层敏感性矩阵（loss 为主口径，同时算 acc）
-3. 计算 ρ = Spearman(敏感性_A, 敏感性_B)，含置换检验与 bootstrap CI
-4. 落盘 npz + json，供 run_equal_error.py 与 make_figures.py 使用
-
-关键约束
+Pipeline
 --------
-* **主口径必须用 loss**。准确率会饱和（同域 1.0 时量化到 2bit 仍可能是 1.0），
-  导致敏感性全为 0、秩相关退化成 NaN。脚本会把两套口径并排打印。
-* 每层的量化用 ``quantize_one_layer`` —— **只量化该层**，其余保持浮点。
+1. Load ``results/baseline/<backbone>.pt``
+2. Compute a per-layer sensitivity matrix on **Domain A** and on the **target
+   domain** (loss is the primary metric, acc is computed alongside it)
+3. Compute rho = Spearman(sensitivity_A, sensitivity_B), with a permutation test
+   and a bootstrap CI
+4. Write npz + json for run_equal_error.py and make_figures.py
+
+Key constraints
+---------------
+* **The primary metric must be loss.** Accuracy saturates (an in-domain 1.0 can
+  still be 1.0 after quantizing to 2 bit), which leaves the sensitivity all zeros
+  and degenerates the rank correlation to NaN. The script prints both metrics
+  side by side.
+* Quantizing one layer uses ``quantize_one_layer`` -- **only that layer** is
+  quantized, the others stay in floating point.
 """
 
 from __future__ import annotations
@@ -63,12 +68,13 @@ def print_matrix(title, names, bits, mat, fmt="{:>12.5f}"):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/base.yaml")
-    ap.add_argument("--shift", default=None, help="目标域键名（configs 里 data.shifts）")
+    ap.add_argument("--shift", default=None,
+                    help="target-domain key (data.shifts in the configs)")
     ap.add_argument("--backbone", default=None)
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--outdir", default="results/sensitivity")
     ap.add_argument("--seed", type=int, default=None,
-                    help="覆盖 config 里的 seed（多种子实验用）")
+                    help="override the seed from the config (used by the multi-seed runs)")
     args = ap.parse_args()
 
     cfg = load_config(args.config)
@@ -83,12 +89,12 @@ def main() -> int:
     shifts = list((cfg["data"].get("shifts") or {}).keys())
     shift = args.shift or (shifts[0] if shifts else None)
     if shift is None:
-        print("配置里没有 data.shifts，无法指定目标域。")
+        print("no data.shifts in the config; cannot pick a target domain.")
         return 2
 
     ckpt_path = pathlib.Path(args.ckpt or f"results/baseline/{name}.pt")
     if not ckpt_path.exists():
-        print(f"找不到权重 {ckpt_path}，请先跑 scripts/train_baseline.py")
+        print(f"checkpoint {ckpt_path} not found; run scripts/train_baseline.py first")
         return 2
     blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     n_classes = int(blob.get("n_classes", 4))
@@ -112,13 +118,15 @@ def main() -> int:
         layer_names = [n for n in layer_names if pat.search(n)]
     if scfg.get("max_layers"):
         layer_names = layer_names[: int(scfg["max_layers"])]
-    print(f"[run_sensitivity] backbone={name}  目标域={shift}  "
-          f"层数={len(layer_names)}  位宽={ladder}  参考位宽={ref_bits}")
+    print(f"[run_sensitivity] backbone={name}  target={shift}  "
+          f"layers={len(layer_names)}  bits={ladder}  reference_bits={ref_bits}")
     if len(layer_names) < 8:
-        print(f"  [!] 只有 {len(layer_names)} 层。n<8 时 Spearman ρ 的 95% 置信区间"
-              "会宽到几乎没有信息量（实测 n=5 时为 [-1,1]）。")
-        print("    建议：加深骨干（CLDNN 用 convs_per_stage=2 得到 10 层，"
-              "ResNet1D 得到 16 层），或放宽 sensitivity.layer_filter。")
+        print(f"  [!] only {len(layer_names)} layers. With n<8 the 95% CI of the"
+              " Spearman rho is so wide that it carries almost no information"
+              " (measured: [-1,1] at n=5).")
+        print("    Suggestion: use a deeper backbone (CLDNN with convs_per_stage=2"
+              " gives 10 layers, ResNet1D gives 16), or loosen"
+              " sensitivity.layer_filter.")
 
     n_test = int(cfg["data"].get("n_test", 2000))
     Xa, ya = make_domain(cfg, "a", n_test, seed + 100)
@@ -137,20 +145,22 @@ def main() -> int:
     t0 = time.time()
     out = {}
     for tag, X, y, dom in (("A", Xa, ya, "A"), ("B", Xb, yb, shift)):
-        print(f"\n  [{dom}] loss 口径")
+        print(f"\n  [{dom}] loss metric")
         s_loss = compute_sensitivity_matrix(
             layer_names, ladder, evaluate=loss_fn(X, y), quantize_layer=ql,
             metric="loss", higher_is_better=False, domain=dom, backbone=name)
-        print(f"  [{dom}] acc 口径（对照）")
+        print(f"  [{dom}] acc metric (control)")
         s_acc = compute_sensitivity_matrix(
             layer_names, ladder, evaluate=acc_fn(X, y), quantize_layer=ql,
             metric="acc", higher_is_better=True, domain=dom, backbone=name)
         out[tag] = {"loss": s_loss, "acc": s_acc}
 
-    print_matrix(f"Δloss (源域 {name})", layer_names, ladder, out["A"]["loss"].delta)
-    print_matrix(f"Δloss (目标域 {shift})", layer_names, ladder, out["B"]["loss"].delta)
+    print_matrix(f"Delta loss (source {name})", layer_names, ladder,
+                 out["A"]["loss"].delta)
+    print_matrix(f"Delta loss (target {shift})", layer_names, ladder,
+                 out["B"]["loss"].delta)
 
-    # ---------------------------------------------------------------- ρ
+    # ---------------------------------------------------------------- rho
     print("\n" + "=" * 78)
     sl_a = out["A"]["loss"].sensitivity_at(ref_bits)
     sl_b = out["B"]["loss"].sensitivity_at(ref_bits)
@@ -161,20 +171,22 @@ def main() -> int:
     res_loss = analyse_pair(sl_a, sl_b, n_permutations=n_perm, seed=seed)
     res_acc = analyse_pair(sa_a, sa_b, n_permutations=n_perm, seed=seed)
 
-    print(f"  参考位宽 {ref_bits} bit   层数 n={len(layer_names)}")
-    print(f"  源域敏感性(loss): {np.round(sl_a, 5).tolist()}")
-    print(f"  目标域敏感性(loss): {np.round(sl_b, 5).tolist()}")
-    print(f"\n  === loss 口径（主）===")
-    print(f"  ρ={res_loss.rho:+.4f}  p={res_loss.p_value:.4g}  "
-          f"CI=[{res_loss.ci_low:+.3f},{res_loss.ci_high:+.3f}]  τ-b={res_loss.tau_b:+.4f}")
+    print(f"  reference bits {ref_bits}   layers n={len(layer_names)}")
+    print(f"  source sensitivity (loss): {np.round(sl_a, 5).tolist()}")
+    print(f"  target sensitivity (loss): {np.round(sl_b, 5).tolist()}")
+    print(f"\n  === loss metric (primary) ===")
+    print(f"  rho={res_loss.rho:+.4f}  p={res_loss.p_value:.4g}  "
+          f"CI=[{res_loss.ci_low:+.3f},{res_loss.ci_high:+.3f}]  "
+          f"tau-b={res_loss.tau_b:+.4f}")
     print(f"  {res_loss.verdict()}")
-    print(f"\n  === acc 口径（对照）===")
-    print(f"  ρ={res_acc.rho:+.4f}  p={res_acc.p_value:.4g}")
+    print(f"\n  === acc metric (control) ===")
+    print(f"  rho={res_acc.rho:+.4f}  p={res_acc.p_value:.4g}")
     if int(np.unique(sa_a).size) < len(layer_names):
-        print(f"  [!] 源域 acc 敏感性只有 {int(np.unique(sa_a).size)} 个不同值 / "
-              f"{len(layer_names)} 层 —— 典型的度量饱和。")
+        print(f"  [!] source-domain acc sensitivity has only "
+              f"{int(np.unique(sa_a).size)} distinct values / "
+              f"{len(layer_names)} layers -- classic metric saturation.")
 
-    # ---------------------------------------------------------------- 落盘
+    # ---------------------------------------------------------------- save
     outdir = pathlib.Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     tag = f"{name}_{shift}"
@@ -203,9 +215,9 @@ def main() -> int:
         "rank_correlation": {"loss": res_loss.as_row(), "acc": res_acc.as_row()},
         "elapsed_s": round(time.time() - t0, 2),
     })
-    print(f"\n  已写入 {npz}")
-    print(f"  已写入 {outdir / f'rank_{tag}.json'}")
-    print(f"  用时 {time.time() - t0:.1f}s")
+    print(f"\n  wrote {npz}")
+    print(f"  wrote {outdir / f'rank_{tag}.json'}")
+    print(f"  elapsed {time.time() - t0:.1f}s")
     return 0
 
 

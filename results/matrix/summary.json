@@ -16,13 +16,13 @@
       "rho_acc": 0.4783,
       "p_acc": 0.152685,
       "ci_acc": "[-0.5018, 1.0]",
-      "verdict_loss": "ρ=+0.673（p=0.0368）：排序中度一致 → 部分可迁移",
+      "verdict_loss": "rho=+0.673 (p=0.0368): rankings moderately consistent -> partly transferable",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.006619338750536309,
       "rel_cost_of_ignorance": 0.14034317763522175,
       "gain_from_sensitivity": 0.04420257526933065,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.006619 的预测损伤（相对 +14.0%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.006619 more predicted damage than allocating by target-domain sensitivity (relative +14.0%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "cldnn",
@@ -39,13 +39,13 @@
       "rho_acc": -0.4354,
       "p_acc": 0.209179,
       "ci_acc": "[-0.9413, 0.4048]",
-      "verdict_loss": "ρ=-0.394 但不显著（p=0.258），不能拒绝'两域敏感性排序独立'的原假设",
+      "verdict_loss": "rho=-0.394 but not significant (p=0.258); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.06783888347896755,
       "rel_cost_of_ignorance": 1.6326748666837683,
       "gain_from_sensitivity": -0.026352586921528042,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.06784 的预测损伤（相对 +163.3%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.06784 more predicted damage than allocating by target-domain sensitivity (relative +163.3%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "cldnn",
@@ -62,13 +62,13 @@
       "rho_acc": 0.8922,
       "p_acc": 0.0008,
       "ci_acc": "[0.5398, 1.0]",
-      "verdict_loss": "ρ=+1.000（p=0.0001）：排序高度一致 → 敏感性近似为架构内在属性",
+      "verdict_loss": "rho=+1.000 (p=0.0001): rankings highly consistent -> sensitivity is close to an intrinsic property of the architecture",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.0,
       "rel_cost_of_ignorance": 0.0,
       "gain_from_sensitivity": 0.010905192597163797,
       "ranking_flipped": false,
-      "verdict_arm": "域无关分配与域相关分配等价 —— 未发现'不知道部署域'的代价"
+      "verdict_arm": "domain-independent and domain-aware allocation are equivalent -- no cost of 'not knowing the deployment domain' was found"
     },
     {
       "backbone": "cldnn",
@@ -85,13 +85,13 @@
       "rho_acc": -0.6193,
       "p_acc": 0.063094,
       "ci_acc": "[-0.9455, 0.1915]",
-      "verdict_loss": "ρ=+0.139 但不显著（p=0.705），不能拒绝'两域敏感性排序独立'的原假设",
+      "verdict_loss": "rho=+0.139 but not significant (p=0.705); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.03035286838237077,
       "rel_cost_of_ignorance": 1.66272123470435,
       "gain_from_sensitivity": -0.011604236121733249,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.03035 的预测损伤（相对 +166.3%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.03035 more predicted damage than allocating by target-domain sensitivity (relative +166.3%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "cldnn",
@@ -108,13 +108,13 @@
       "rho_acc": 0.4014,
       "p_acc": 0.248275,
       "ci_acc": "[-0.5977, 1.0]",
-      "verdict_loss": "ρ=+0.103 但不显著（p=0.785），不能拒绝'两域敏感性排序独立'的原假设",
+      "verdict_loss": "rho=+0.103 but not significant (p=0.785); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.019022520508550342,
       "rel_cost_of_ignorance": 0.9285460712616636,
       "gain_from_sensitivity": 0.001467436153088474,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.01902 的预测损伤（相对 +92.9%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.01902 more predicted damage than allocating by target-domain sensitivity (relative +92.9%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "resnet1d",
@@ -131,13 +131,13 @@
       "rho_acc": 0.3031,
       "p_acc": 0.255974,
       "ci_acc": "[-0.2957, 0.7818]",
-      "verdict_loss": "ρ=+0.329 但不显著（p=0.213），不能拒绝'两域敏感性排序独立'的原假设",
+      "verdict_loss": "rho=+0.329 but not significant (p=0.213); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.026947161054970893,
       "rel_cost_of_ignorance": 0.5439443252339988,
       "gain_from_sensitivity": 0.02342844667253351,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.02695 的预测损伤（相对 +54.4%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.02695 more predicted damage than allocating by target-domain sensitivity (relative +54.4%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "resnet1d",
@@ -154,13 +154,13 @@
       "rho_acc": -0.1205,
       "p_acc": 0.662634,
       "ci_acc": "[-0.682, 0.4445]",
-      "verdict_loss": "ρ=-0.200 但不显著（p=0.456），不能拒绝'两域敏感性排序独立'的原假设",
+      "verdict_loss": "rho=-0.200 but not significant (p=0.456); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.8031275076422979,
       "rel_cost_of_ignorance": 1.220314396199254,
       "gain_from_sensitivity": -0.1457413826538307,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.8031 的预测损伤（相对 +122.0%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.8031 more predicted damage than allocating by target-domain sensitivity (relative +122.0%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "resnet1d",
@@ -177,13 +177,13 @@
       "rho_acc": 0.2286,
       "p_acc": 0.392561,
       "ci_acc": "[-0.2652, 0.6142]",
-      "verdict_loss": "ρ=+0.579（p=0.0209）：排序中度一致 → 部分可迁移",
+      "verdict_loss": "rho=+0.579 (p=0.0209): rankings moderately consistent -> partly transferable",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.002712571911517956,
       "rel_cost_of_ignorance": 0.49988305622866025,
       "gain_from_sensitivity": 0.002961827935881996,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.002713 的预测损伤（相对 +50.0%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.002713 more predicted damage than allocating by target-domain sensitivity (relative +50.0%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "resnet1d",
@@ -200,13 +200,13 @@
       "rho_acc": -0.2584,
       "p_acc": 0.329767,
       "ci_acc": "[-0.8217, 0.3509]",
-      "verdict_loss": "ρ=-0.179 但不显著（p=0.501），不能拒绝'两域敏感性排序独立'的原假设",
+      "verdict_loss": "rho=-0.179 but not significant (p=0.501); cannot reject the null hypothesis that the two domains' sensitivity rankings are independent",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.4725002758553492,
       "rel_cost_of_ignorance": 1.2027906042760141,
       "gain_from_sensitivity": -0.07989168819058312,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.4725 的预测损伤（相对 +120.3%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.4725 more predicted damage than allocating by target-domain sensitivity (relative +120.3%) -> **no domain-independent optimal bit allocation exists**"
     },
     {
       "backbone": "resnet1d",
@@ -223,13 +223,13 @@
       "rho_acc": 0.1053,
       "p_acc": 0.69553,
       "ci_acc": "[-0.5699, 0.6667]",
-      "verdict_loss": "ρ=+0.635（p=0.0103）：排序中度一致 → 部分可迁移",
+      "verdict_loss": "rho=+0.635 (p=0.0103): rankings moderately consistent -> partly transferable",
       "budget_ratio": 0.6,
       "cost_of_ignorance": 0.0016126487059930222,
       "rel_cost_of_ignorance": 0.05872681082788559,
       "gain_from_sensitivity": 0.025862356057764695,
       "ranking_flipped": true,
-      "verdict_arm": "按源域敏感性分配比按目标域分配多付出 0.001613 的预测损伤（相对 +5.9%）→ **不存在域无关的最优比特分配**"
+      "verdict_arm": "allocating by source-domain sensitivity pays 0.001613 more predicted damage than allocating by target-domain sensitivity (relative +5.9%) -> **no domain-independent optimal bit allocation exists**"
     }
   ]
 }

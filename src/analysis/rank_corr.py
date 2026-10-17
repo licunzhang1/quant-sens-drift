@@ -1,17 +1,22 @@
-"""秩相关性分析 —— 项目的核心量 ρ 在这里算。
+"""Rank-correlation analysis -- the core quantity rho of the project is computed
+here.
 
-为什么不能只报一个 Spearman ρ
-------------------------------
-本项目的层数只有十几层。在 n≈12 的样本上，Spearman ρ 的抽样方差**很大**：
-即使两个域完全独立，|ρ| 也可能轻松超过 0.5。
+Why reporting a single Spearman rho is not enough
+-----------------------------------------------
+This project has only a dozen-odd layers. On a sample of n~=12 the sampling
+variance of Spearman rho is **large**: even if the two domains are completely
+independent, |rho| can easily exceed 0.5.
 
-所以这里额外提供：
-  * ``permutation_test`` —— 给出 p 值（H0：两域敏感性排序独立）
-  * ``bootstrap_ci``     —— 给出 ρ 的置信区间
+So this module additionally provides:
+  * ``permutation_test`` -- gives a p-value (H0: the two domains' sensitivity
+    rankings are independent)
+  * ``bootstrap_ci``     -- gives a confidence interval for rho
 
-**只报 ρ 不报显著性是不严谨的**，答辩时一定会被问。
+**Reporting rho without a significance test is not rigorous**, and it will
+certainly be questioned in a defense.
 
-参考：Spearman 秩相关的平均秩处理见 Kendall (1970)；置换检验见 Good (2005)。
+Reference: average-rank handling for the Spearman rank correlation follows
+Kendall (1970); the permutation test follows Good (2005).
 """
 
 from __future__ import annotations
@@ -34,12 +39,14 @@ __all__ = [
 
 
 # --------------------------------------------------------------------------
-# 秩
+# ranks
 # --------------------------------------------------------------------------
 def rankdata_average(a: np.ndarray) -> np.ndarray:
-    """平均秩（并列取平均）。等价于 scipy.stats.rankdata(method="average")。
+    """Average ranks (ties share their mean rank).
 
-    自己实现是为了让核心分析不依赖 scipy，并且逻辑可读、可测试。
+    Equivalent to scipy.stats.rankdata(method="average"). It is implemented here
+    so that the core analysis does not depend on scipy, and so that the logic
+    stays readable and testable.
     """
     a = np.asarray(a, dtype=np.float64).ravel()
     n = a.size
@@ -57,7 +64,7 @@ def rankdata_average(a: np.ndarray) -> np.ndarray:
         while j + 1 < n and sorted_a[j + 1] == sorted_a[i]:
             j += 1
         if j > i:
-            avg = (i + j + 2) / 2.0  # 名次是 1-based
+            avg = (i + j + 2) / 2.0  # the ranks are 1-based
             ranks[order[i : j + 1]] = avg
         i = j + 1
     return ranks
@@ -68,7 +75,7 @@ def _drop_nan(*arrs: np.ndarray) -> Tuple[np.ndarray, ...]:
     n = arrs[0].size
     for a in arrs:
         if a.size != n:
-            raise ValueError("所有输入长度必须一致")
+            raise ValueError("all inputs must have the same length")
     mask = np.ones(n, dtype=bool)
     for a in arrs:
         mask &= np.isfinite(a)
@@ -88,7 +95,7 @@ def pearson(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def spearman(a: np.ndarray, b: np.ndarray) -> float:
-    """Spearman 秩相关（= 平均秩上的 Pearson）。"""
+    """Spearman rank correlation (= Pearson on the average ranks)."""
     a, b = _drop_nan(a, b)
     if a.size < 2:
         return float("nan")
@@ -96,7 +103,8 @@ def spearman(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def kendall_tau_b(a: np.ndarray, b: np.ndarray) -> float:
-    """Kendall τ-b。层数少时比 Spearman 更稳健，可作为附加证据。"""
+    """Kendall tau-b. More robust than Spearman with few layers; useful as
+    supporting evidence."""
     a, b = _drop_nan(a, b)
     n = a.size
     if n < 2:
@@ -126,7 +134,7 @@ def kendall_tau_b(a: np.ndarray, b: np.ndarray) -> float:
 
 
 # --------------------------------------------------------------------------
-# 显著性
+# significance
 # --------------------------------------------------------------------------
 def permutation_test(
     a: np.ndarray,
@@ -135,10 +143,11 @@ def permutation_test(
     seed: int = 42,
     two_sided: bool = True,
 ) -> Tuple[float, float]:
-    """置换检验。返回 ``(rho_observed, p_value)``。
+    """Permutation test. Returns ``(rho_observed, p_value)``.
 
-    H0：两个域的敏感性排序相互独立。
-    在 H0 下，打乱 b 的对应关系不改变 ρ 的分布，于是可以精确地重采样出零分布。
+    H0: the sensitivity rankings of the two domains are independent.
+    Under H0, shuffling the pairing of b does not change the distribution of rho,
+    so the null distribution can be resampled exactly.
     """
     a, b = _drop_nan(a, b)
     rho = spearman(a, b)
@@ -158,7 +167,7 @@ def permutation_test(
         else:
             if r >= rho - 1e-12:
                 count += 1
-    # +1 修正，避免 p=0
+    # +1 correction so that p never reaches 0
     p = (count + 1) / (n_permutations + 1)
     return rho, float(p)
 
@@ -170,7 +179,7 @@ def bootstrap_ci(
     alpha: float = 0.05,
     seed: int = 42,
 ) -> Tuple[float, float]:
-    """ρ 的 percentile bootstrap 置信区间。返回 ``(lo, hi)``。"""
+    """Percentile bootstrap confidence interval for rho. Returns ``(lo, hi)``."""
     a, b = _drop_nan(a, b)
     n = a.size
     if n < 4:
@@ -189,11 +198,14 @@ def bootstrap_ci(
 
 
 # --------------------------------------------------------------------------
-# 结果容器
+# result container
 # --------------------------------------------------------------------------
 @dataclass
 class RankCorrelationResult:
-    """一对域之间的秩稳定性结果。这是报告里最重要的一个数据类。"""
+    """Rank-stability result for a pair of domains.
+
+    This is the single most important data class in the report.
+    """
 
     n_layers: int
     rho: float
@@ -201,33 +213,47 @@ class RankCorrelationResult:
     ci_low: float
     ci_high: float
     tau_b: float
-    rho_pearson_raw: float  # 未转秩的 Pearson，作为对照（会被量纲/离群值影响）
+    rho_pearson_raw: float  # Pearson without ranking, as a control (moves with units/outliers)
     seed_used: int
 
     @property
     def significant(self) -> bool:
-        """是否在 0.05 水平显著。显式返回 Python bool，避免 numpy 类型污染 JSON。"""
+        """Whether the result is significant at the 0.05 level.
+
+        Returns a Python bool explicitly so that numpy types do not leak into
+        the JSON output.
+        """
         p = self.p_value
         if not np.isfinite(p):
             return False
         return bool(p < 0.05)
 
     def verdict(self, alpha: float = 0.05) -> str:
-        """把数字翻译成结论。这是写报告时直接可用的一句话。"""
+        """Turn the numbers into a conclusion.
+
+        A sentence that can be used directly when writing the report.
+        """
         if not np.isfinite(self.rho):
-            return "样本不足，无法判断"
+            return "not enough samples to decide"
         if np.isfinite(self.p_value) and self.p_value >= alpha:
             return (
-                f"ρ={self.rho:+.3f} 但不显著（p={self.p_value:.3f}），"
-                "不能拒绝'两域敏感性排序独立'的原假设"
+                f"rho={self.rho:+.3f} but not significant (p={self.p_value:.3f}); "
+                "cannot reject the null hypothesis that the two domains' "
+                "sensitivity rankings are independent"
             )
         if self.rho >= 0.8:
-            return f"ρ={self.rho:+.3f}（p={self.p_value:.3g}）：排序高度一致 → 敏感性近似为架构内在属性"
+            return (f"rho={self.rho:+.3f} (p={self.p_value:.3g}): rankings highly "
+                    "consistent -> sensitivity is close to an intrinsic property "
+                    "of the architecture")
         if self.rho >= 0.5:
-            return f"ρ={self.rho:+.3f}（p={self.p_value:.3g}）：排序中度一致 → 部分可迁移"
+            return (f"rho={self.rho:+.3f} (p={self.p_value:.3g}): rankings "
+                    "moderately consistent -> partly transferable")
         if self.rho >= 0:
-            return f"ρ={self.rho:+.3f}（p={self.p_value:.3g}）：排序弱一致 → 位宽分配基本不可跨域复用"
-        return f"ρ={self.rho:+.3f}（p={self.p_value:.3g}）：排序反转 → 跨域复用会主动损害性能"
+            return (f"rho={self.rho:+.3f} (p={self.p_value:.3g}): rankings weakly "
+                    "consistent -> bit allocation is basically not reusable "
+                    "across domains")
+        return (f"rho={self.rho:+.3f} (p={self.p_value:.3g}): rankings reversed -> "
+                "reusing them across domains actively hurts performance")
 
     def as_row(self) -> dict:
         return {
@@ -250,7 +276,8 @@ def analyse_pair(
     seed: int = 42,
     n_boot: int = 5000,
 ) -> RankCorrelationResult:
-    """给定两个域的逐层敏感性向量，产出完整的秩稳定性分析。"""
+    """Given the layer-wise sensitivity vectors of two domains, produce the full
+    rank-stability analysis."""
     a, b = _drop_nan(sens_a, sens_b)
     rho, p = permutation_test(a, b, n_permutations=n_permutations, seed=seed)
     lo, hi = bootstrap_ci(a, b, n_boot=n_boot, alpha=alpha, seed=seed)

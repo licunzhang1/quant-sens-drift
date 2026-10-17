@@ -1,21 +1,22 @@
-"""W15–W16：从已保存的结果生成报告用的四张核心图。
+"""W15-W16: generate the four core report figures from saved results.
 
     python scripts/make_figures.py --backbone cldnn --shift D1_snr
 
-读取：
-  results/sensitivity/sens_<backbone>_<shift>.npz      ← run_sensitivity.py
-  results/equal_error/arm_<backbone>_<shift>.json      ← run_equal_error.py
-  results/baseline/<backbone>_metrics.json             ← train_baseline.py（可选）
+Reads:
+  results/sensitivity/sens_<backbone>_<shift>.npz      <- run_sensitivity.py
+  results/equal_error/arm_<backbone>_<shift>.json      <- run_equal_error.py
+  results/baseline/<backbone>_metrics.json             <- train_baseline.py (optional)
 
-输出：
+Writes:
   results/figures/fig1_sensitivity_heatmap.png
   results/figures/fig2_rank_scatter.png
   results/figures/fig3_equal_error_arms.png
   results/figures/fig4_proxy_scatter.png
-  results/figures/fig5_domain_gap.png            （若 baseline 指标存在）
+  results/figures/fig5_domain_gap.png            (when baseline metrics exist)
 
-**本脚本是这四个图表的唯一权威入口。**
-不要手动画图 —— 报告里的每张图都必须能由一条命令重生成，这是可复现性的一部分。
+**This script is the single authoritative entry point for these figures.**
+Do not draw figures by hand -- every figure in the report must be reproducible
+from a single command, which is part of reproducibility.
 """
 
 from __future__ import annotations
@@ -44,6 +45,7 @@ import numpy as np
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.utils import discover_seed_roots  # noqa: E402
 from src.viz.figures import (  # noqa: E402
     plot_domain_gap,
     plot_equal_error_arms,
@@ -58,18 +60,29 @@ def main() -> int:
     ap.add_argument("--backbone", default="cldnn")
     ap.add_argument("--shift", default="D1_snr")
     ap.add_argument("--reference-bits", type=int, default=4)
+    ap.add_argument("--seed", type=int, default=None,
+                    help="which seed's results to plot; default: the highest available")
     ap.add_argument("--outdir", default="results/figures")
     args = ap.parse_args()
 
     tag = f"{args.backbone}_{args.shift}"
-    sens_npz = pathlib.Path(f"results/sensitivity/sens_{tag}.npz")
-    arm_json = pathlib.Path(f"results/equal_error/arm_{tag}.json")
-    base_json = pathlib.Path(f"results/baseline/{args.backbone}_metrics.json")
+    results_dir = pathlib.Path("results")
+    seed = args.seed
+    if seed is None:
+        roots = discover_seed_roots(results_dir)
+        seed = max(roots) if roots else None
+    seed_dir = (results_dir / f"seed{seed}") if seed is not None else results_dir
+    if not (seed_dir / "sensitivity").is_dir():
+        seed_dir = results_dir                     # flat fallback
+    print(f"reading from {seed_dir}")
+    sens_npz = seed_dir / "sensitivity" / f"sens_{tag}.npz"
+    arm_json = seed_dir / "equal_error" / f"arm_{tag}.json"
+    base_json = seed_dir / "baseline" / f"{args.backbone}_metrics.json"
     outdir = pathlib.Path(args.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
     if not sens_npz.exists():
-        print(f"缺少 {sens_npz}，请先跑 scripts/run_sensitivity.py")
+        print(f"missing {sens_npz}; run scripts/run_sensitivity.py first")
         return 2
     z = np.load(sens_npz, allow_pickle=True)
     layer_names = [str(s) for s in z["layer_names"]]
@@ -86,8 +99,8 @@ def main() -> int:
         name_a=f"{args.backbone} / Domain A (loss)", 
         name_b=f"{args.backbone} / {args.shift} (loss)"))
 
-    # ρ 与 p 从 rank_*.json 读（图里只做标注，不重算）
-    rank_json = pathlib.Path(f"results/sensitivity/rank_{tag}.json")
+    # rho and p are read from rank_*.json (annotated only, not recomputed)
+    rank_json = seed_dir / "sensitivity" / f"rank_{tag}.json"
     rho = p = float("nan")
     if rank_json.exists():
         rk = json.loads(rank_json.read_text(encoding="utf-8"))
@@ -102,7 +115,7 @@ def main() -> int:
         arm = json.loads(arm_json.read_text(encoding="utf-8"))
         arms_all = arm.get("arms", [])
         if arms_all:
-            # 取中间的预算档（默认三档 0.4/0.6/0.8）
+            # take the middle budget rung (three rungs by default: 0.4/0.6/0.8)
             pick = sorted(arms_all, key=lambda r: abs(r["budget_ratio"] - 0.6))[0]
             made.append(plot_equal_error_arms(
                 {"uniform": pick["uniform_bits"],
@@ -115,14 +128,16 @@ def main() -> int:
                 budget_ratio=pick["budget_ratio"]))
         proxies = arm.get("proxies", [])
         if proxies:
-            # 代理量原始值没有存进 arm json，这里用敏感性做 x 轴的替代展示
+            # the raw proxy values are not stored in the arm json, so the x axis
+            # shows a stand-in built from the sensitivities
             made.append(plot_proxy_scatter(
                 {c["proxy"]: np.array([c["rho"]]) for c in proxies},
                 np.array([0.0]), proxies, outdir / "fig4_proxy_correlation.png"))
-            print("  注意：fig4 画的是代理量的 |ρ| 汇总；"
-                  "若要画真正的散点图，需在 run_equal_error.py 里一并保存代理量原始值。")
+            print("  note: fig4 plots an |rho| summary of the proxies;"
+                  " to draw a real scatter plot, the raw proxy values would have to"
+                  " be saved by run_equal_error.py as well.")
     else:
-        print(f"缺少 {arm_json}，跳过图 3/图 4")
+        print(f"missing {arm_json}; skipping fig3/fig4")
 
     if base_json.exists():
         b = json.loads(base_json.read_text(encoding="utf-8"))
@@ -132,7 +147,7 @@ def main() -> int:
                 {k: v["acc"] for k, v in doms.items()},
                 outdir / "fig5_domain_gap.png", metric="accuracy"))
 
-    print("\n已生成：")
+    print("\nfigures written:")
     for p_ in made:
         print(f"  {p_}")
     return 0

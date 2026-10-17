@@ -1,22 +1,24 @@
-"""修复 GBK 控制台编码问题。
+"""Fix GBK console encoding problems.
 
-背景
-----
-中文 Windows 的控制台默认编码是 GBK。任何无法编码到 GBK 的字符在 print 时
-会抛 UnicodeEncodeError 直接崩溃 —— 实测 U+26A0 会让 scripts/*.py 和
-tests/smoke_pipeline.py 在克隆副本里失败。
+Background
+----------
+A Chinese Windows console defaults to GBK. Any character that cannot be encoded
+to GBK raises UnicodeEncodeError on print and crashes outright -- measured:
+U+26A0 makes scripts/*.py and tests/smoke_pipeline.py fail in a fresh clone.
 
-两步修复
---------
-1. **兜底**：在每个可执行脚本的模块 docstring 之后插入一段 stdout/stderr
-   重配置，把 errors 设为 replace。这样将来即使有人加入新的特殊字符，
-   最差也只是显示成 "?" 而不会崩溃。
-2. **清理**：把当前用到的 15 种不可编码字符替换为 ASCII 等价物。
+Two-step fix
+------------
+1. **Bootstrap**: after the module docstring of every executable script, insert
+   a stdout/stderr reconfiguration that sets errors to replace. Then even if
+   someone adds a new special character later, the worst case is that it shows
+   up as "?" instead of crashing.
+2. **Cleanup**: replace the 15 non-encodable characters currently in use with
+   their ASCII equivalents.
 
-用 ast 定位 docstring 的结束位置，比正则可靠。
+Locating the end of the docstring with ast is more reliable than a regex.
 
-用法
-----
+Usage
+-----
     python tools/fix_console_encoding.py --dry-run
     python tools/fix_console_encoding.py
 """
@@ -30,11 +32,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-# 字符 -> ASCII 替换表
+# character -> ASCII replacement table
 REPLACEMENTS = {
     "\u2212": "-",        # MINUS SIGN
     "\u26a0": "[!]",      # WARNING SIGN
-    "\u2113": "l",        # SCRIPT SMALL L（层索引）
+    "\u2113": "l",        # SCRIPT SMALL L (layer index)
     "\u00b2": "^2",       # SUPERSCRIPT TWO
     "\u00b3": "^3",       # SUPERSCRIPT THREE
     "\u2074": "^4",       # SUPERSCRIPT FOUR
@@ -68,11 +70,14 @@ del _console_sys, _stream
 
 
 def target_files() -> list[tuple[pathlib.Path, bool]]:
-    """返回 ``(路径, 是否需要插入控制台兜底代码)``。
+    """Return ``(path, whether the console bootstrap needs inserting)``.
 
-    * ``scripts/`` ``tests/`` ``tools/`` 里的可执行脚本：需要兜底（它们会 print）
-    * ``src/`` 里的库模块：只做字符替换（库不应改调用方的 stdout）
-    * ``.md`` / ``.yaml`` / ``.txt`` / ``.cff``：只做字符替换（清理排版字符）
+    * executable scripts in ``scripts/`` ``tests/`` ``tools/``: need the
+      bootstrap (they print)
+    * library modules in ``src/``: character replacement only (a library must
+      not touch the caller's stdout)
+    * ``.md`` / ``.yaml`` / ``.txt`` / ``.cff``: character replacement only
+      (clean up typographic characters)
     """
     self_path = pathlib.Path(__file__).resolve()
     out: list[tuple[pathlib.Path, bool]] = []
@@ -90,7 +95,7 @@ def target_files() -> list[tuple[pathlib.Path, bool]]:
 
 
 def docstring_end_line(text: str) -> int:
-    """返回模块 docstring 的结束行号（1-based）；没有则返回 0。"""
+    """Return the end line number of the module docstring (1-based); 0 if absent."""
     try:
         tree = ast.parse(text)
     except SyntaxError:
@@ -108,15 +113,18 @@ def docstring_end_line(text: str) -> int:
 
 
 def insert_bootstrap(text: str) -> str:
-    """在模块 docstring（以及其后的 ``from __future__`` 块）之后插入兜底代码。
+    """Insert the bootstrap after the module docstring (and any ``from __future__``
+    block).
 
-    关键约束：``from __future__ import ...`` 必须是 docstring 之后的**第一条语句**，
-    否则整个文件是 SyntaxError。因此插入点必须跳过它，以及中间的空行。
+    Key constraint: ``from __future__ import ...`` must be the **first statement**
+    after the docstring, or the whole file is a SyntaxError. The insertion point
+    must therefore skip it, along with any blank lines in between.
     """
     lines = text.splitlines(keepends=True)
     at = docstring_end_line(text)
 
-    # 跳过空行与 from __future__ 行 —— 两者都不能被兜底代码插到前面
+    # skip blank lines and the from __future__ line -- neither may end up
+    # after the bootstrap code
     j = at
     while j < len(lines):
         s = lines[j].strip()
@@ -127,7 +135,7 @@ def insert_bootstrap(text: str) -> str:
     at = j
 
     if at == 0:
-        # 没有 docstring 也没有 __future__：插到第一个 import 之前
+        # no docstring and no __future__: insert before the first import
         for i, ln in enumerate(lines):
             if ln.startswith(("import ", "from ")):
                 at = i

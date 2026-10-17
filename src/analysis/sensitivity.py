@@ -1,16 +1,18 @@
-"""逐层量化敏感性矩阵。
+"""Layer-wise quantization sensitivity matrix.
 
-核心量
-------
-``Δ_l(b) = M(量化第 l 层到 b bit) - M(全浮点)``
+Core quantity
+-------------
+``Delta_l(b) = M(quantizing layer l to b bits) - M(full float)``
 
-其中 M 是评价指标（准确率或损失）。
+where M is the evaluation metric (accuracy or loss).
 
-设计上是**框架无关**的：只依赖两个回调
-  * ``evaluate()``             -> float，全浮点下的指标
-  * ``quantize_layer(name, b)`` -> context manager，临时把第 l 层量化
+The design is **framework-independent**: it depends only on two callbacks
+  * ``evaluate()``             -> float, the metric at full precision
+  * ``quantize_layer(name, b)`` -> context manager that temporarily quantizes
+    layer l
 
-这样 numpy 冒烟测试和 torch 真实训练可以共用同一套逻辑。
+That way the numpy smoke test and the real torch training can share one
+implementation.
 """
 
 from __future__ import annotations
@@ -35,13 +37,13 @@ __all__ = [
 
 @dataclass
 class SensitivityResult:
-    """逐层敏感性矩阵及其元数据。"""
+    """Layer-wise sensitivity matrix and its metadata."""
 
     layer_names: List[str]
     bits_ladder: List[int]
-    delta: np.ndarray          # (n_layers, n_bits)  Δmetric，已按"越大越糟"定向
-    absolute: np.ndarray       # (n_layers, n_bits)  量化后的绝对指标
-    baseline: float            # 全浮点指标
+    delta: np.ndarray          # (n_layers, n_bits)  Deltametric, oriented so larger = worse
+    absolute: np.ndarray       # (n_layers, n_bits)  absolute metric after quantization
+    baseline: float            # full-precision metric
     metric: str
     higher_is_better: bool
     domain: str = ""
@@ -49,15 +51,18 @@ class SensitivityResult:
     elapsed_s: float = 0.0
     extra: Dict[str, object] = field(default_factory=dict)
 
-    # ---------------------------------------------------------------- 便捷
+    # ------------------------------------------------------------ convenience
     @property
     def n_layers(self) -> int:
         return len(self.layer_names)
 
     def sensitivity_at(self, bits: int) -> np.ndarray:
-        """取某个位宽下的敏感性向量（秩分析通常用参考位宽）。"""
+        """Sensitivity vector at a given bit width.
+
+        Rank analysis normally uses the reference bit width.
+        """
         if bits not in self.bits_ladder:
-            raise KeyError(f"{bits} 不在位宽阶梯 {self.bits_ladder} 中")
+            raise KeyError(f"{bits} is not in the bit-width ladder {self.bits_ladder}")
         return self.delta[:, self.bits_ladder.index(bits)]
 
     def to_dict(self) -> Dict[str, object]:
@@ -125,16 +130,18 @@ def compute_sensitivity_matrix(
     backbone: str = "",
     progress: bool = True,
 ) -> SensitivityResult:
-    """主入口：算完整的逐层敏感性矩阵。
+    """Main entry point: compute the full layer-wise sensitivity matrix.
 
     Parameters
     ----------
-    layer_names : 要分析的层名（顺序即输出行顺序）
-    bits_ladder : 位宽阶梯，如 (2, 3, 4, 6, 8)
-    evaluate : 无参函数，返回当前模型在目标域上的指标
+    layer_names : layers to analyse (the order is the row order of the output)
+    bits_ladder : bit-width ladder, e.g. (2, 3, 4, 6, 8)
+    evaluate : zero-argument function returning the current model's metric on
+        the target domain
     quantize_layer : ``(layer_name, bits) -> context manager``
-    higher_is_better : True（准确率）时 Δ 定义为"下降量"；False（损失）时定义为"上升量"。
-        两种情况都保证 **Δ 越大 = 越糟**，可以直接比较与排序。
+    higher_is_better : with True (accuracy), Delta is defined as the drop; with
+        False (loss), as the increase. Either way **larger Delta = worse**, so the
+        values can be compared and ranked directly.
 
     Returns
     -------
@@ -157,7 +164,7 @@ def compute_sensitivity_matrix(
             delta[i, j] = (baseline - v) if higher_is_better else (v - baseline)
         if progress:
             worst = np.nanmax(delta[i]) if np.isfinite(delta[i]).any() else float("nan")
-            print(f"  [{i + 1:>2}/{n_l}] {name:<40s} worst Δ{metric} = {worst:+.4f}")
+            print(f"  [{i + 1:>2}/{n_l}] {name:<40s} worst Delta{metric} = {worst:+.4f}")
 
     return SensitivityResult(
         layer_names=layer_names,
@@ -178,13 +185,14 @@ def sensitivity_at_bits(result: SensitivityResult, bits: int) -> np.ndarray:
 
 
 def normalise_sensitivity(s: np.ndarray, mode: str = "max") -> np.ndarray:
-    """把敏感性向量归一化到 [0,1]，方便跨骨干比较。
+    """Normalize a sensitivity vector to [0, 1] for cross-backbone comparison.
 
     mode
     ----
-    max  : 除以最大值（保持相对大小，最常用）
-    rank : 转成 0..1 的分位序（只保留顺序信息，等价于直接用秩）
-    none : 原样返回
+    max  : divide by the maximum (keeps relative magnitudes, the usual choice)
+    rank : map to a 0..1 quantile order (keeps only the ordering, equivalent to
+           using the ranks directly)
+    none : return unchanged
     """
     s = np.asarray(s, dtype=np.float64)
     if mode == "none":
@@ -201,4 +209,4 @@ def normalise_sensitivity(s: np.ndarray, mode: str = "max") -> np.ndarray:
         if not np.isfinite(m) or m < 1e-12:
             return np.zeros_like(s)
         return s / m
-    raise ValueError(f"未知的归一化模式: {mode}")
+    raise ValueError(f"unknown normalization mode: {mode}")

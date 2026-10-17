@@ -1,9 +1,9 @@
-"""模型集合。
+"""Model collection.
 
-``NumpyMLP`` 是纯 numpy 的参考实现，急切导入。
-``CLDNN`` / ``ResNet1D`` 依赖 torch，**惰性导入** —— 这样只跑
-``tests/test_quant_core.py`` 与 ``tests/smoke_pipeline.py`` 的机器
-（只有 numpy）不会被拖累。
+``NumpyMLP`` is a pure-numpy reference implementation and is imported eagerly.
+``CLDNN`` / ``ResNet1D`` depend on torch and are **imported lazily** -- that way
+a machine that only runs ``tests/test_quant_core.py`` and
+``tests/smoke_pipeline.py`` (numpy only) is not held back.
 """
 
 from .numpy_mlp import NumpyMLP, quantized_all_weights, quantized_layer

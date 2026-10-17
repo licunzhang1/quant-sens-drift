@@ -1,30 +1,36 @@
-"""等重构误差臂 —— 把"排序会变"升级为"不存在域无关的最优比特分配"。
+"""The equal-reconstruction-error arm -- upgrading "the ranking changes" to
+"no domain-independent optimal bit allocation exists".
 
-问题设定
---------
-给每个层 l 分配位宽 ``b_l ∈ 位宽阶梯``，在**总量化误差预算固定**的前提下，
-最小化预测损伤
+Problem setting
+---------------
+Assign each layer l a bit width ``b_l  in  bit-width ladder`` and, subject to a
+**fixed total quantization error budget**, minimise the predicted damage
 
-    D(b) = Σ_l  s_l · ε_l(b_l)
+    D(b) = Sum_l  s_l * eps_l(b_l)
 
-其中 ``s_l`` 是第 l 层的敏感性，``ε_l(b)`` 是第 l 层在 b bit 下的重构误差（NMSE）。
+where ``s_l`` is the sensitivity of layer l and ``eps_l(b)`` is the reconstruction
+error (NMSE) of layer l at b bits.
 
-三条臂
-------
-1. **uniform**  所有层同位宽（不看敏感性）
-2. **agnostic** 用**源域 A** 的敏感性分配  ← 这就是现实中你能做的（你只知道训练域）
-3. **oracle**   用**目标域 B** 的敏感性分配 ← 不可实现，是上界
+The three arms
+--------------
+1. **uniform**  every layer at the same bit width (sensitivity ignored)
+2. **agnostic** allocate with the sensitivity of **source domain A**  <- this is
+   what is actually possible in practice (you only know the training domain)
+3. **oracle**   allocate with the sensitivity of **target domain B** <- not
+   implementable, it is the upper bound
 
-两个关键差值
-------------
-* ``agnostic - uniform``：敏感性引导的分配到底有没有用？
-* ``oracle - agnostic``：**"不知道部署域"的代价** ← 这是本项目的核心量
+Two key differences
+-------------------
+* ``agnostic - uniform``: does sensitivity-guided allocation help at all?
+* ``oracle - agnostic``: **the cost of "not knowing the deployment domain"** <-
+  this is the core quantity of the project
 
-若后者的代价不可忽略，就得到干净的反例：
+If the latter cost is not negligible, we get a clean counterexample:
 
-    **不存在一个域无关的最优比特分配。**
+    **No domain-independent optimal bit allocation exists.**
 
-实现是贪心（边际收益 / 边际预算），对这类可分凹问题近似最优，且完全可复现。
+The implementation is greedy (marginal gain / marginal budget); it is
+near-optimal for this kind of separable concave problem and fully reproducible.
 """
 
 from __future__ import annotations
@@ -50,7 +56,7 @@ def predicted_damage(
     err_curves: np.ndarray,
     bits_ladder: Sequence[int],
 ) -> float:
-    """``D = Σ_l s_l · ε_l(b_l)``。"""
+    """``D = Sum_l s_l * eps_l(b_l)``."""
     bits = np.asarray(bits, dtype=int)
     sensitivity = np.asarray(sensitivity, dtype=np.float64)
     err_curves = np.asarray(err_curves, dtype=np.float64)
@@ -62,9 +68,9 @@ def predicted_damage(
 
 @dataclass
 class Allocation:
-    """一次位宽分配的结果。"""
+    """The result of one bit-width allocation."""
 
-    bits: np.ndarray                 # (n_layers,) 每层位宽
+    bits: np.ndarray                 # (n_layers,) bit width per layer
     predicted_damage: float
     budget_used: float
     budget_total: float
@@ -90,14 +96,14 @@ class Allocation:
 
 
 # --------------------------------------------------------------------------
-# 预算
+# budget
 # --------------------------------------------------------------------------
 def _resolve_costs(n_layers: int, layer_costs: Optional[Sequence[float]]) -> np.ndarray:
     if layer_costs is None:
         return np.ones(n_layers, dtype=np.float64)
     c = np.asarray(layer_costs, dtype=np.float64).ravel()
     if c.size != n_layers:
-        raise ValueError(f"layer_costs 长度 {c.size} 与层数 {n_layers} 不一致")
+        raise ValueError(f"layer_costs has length {c.size}; expected {n_layers} layers")
     c = np.maximum(c, 1e-12)
     return c
 
@@ -108,7 +114,7 @@ def _total_budget(costs: np.ndarray, bits_ladder: Sequence[int], budget_ratio: f
 
 
 # --------------------------------------------------------------------------
-# 分配策略
+# allocation strategies
 # --------------------------------------------------------------------------
 def uniform_allocate(
     n_layers: int,
@@ -118,7 +124,7 @@ def uniform_allocate(
     sensitivity: Optional[np.ndarray] = None,
     err_curves: Optional[np.ndarray] = None,
 ) -> Allocation:
-    """所有层用同一个位宽：取预算允许的最大那一档。"""
+    """Give every layer the same bit width: the largest rung the budget allows."""
     ladder = list(bits_ladder)
     costs = _resolve_costs(n_layers, layer_costs)
     budget = _total_budget(costs, ladder, budget_ratio)
@@ -144,27 +150,33 @@ def greedy_allocate(
     min_bits: Optional[int] = None,
     strategy: str = "greedy",
 ) -> Allocation:
-    """贪心位宽分配：每步选"边际损伤下降 / 边际预算"最大的那一层升一档。
+    """Greedy bit-width allocation.
+
+    Each step raises by one rung the layer with the largest "marginal damage
+    reduction / marginal budget".
 
     Parameters
     ----------
-    sensitivity : (n_layers,)   s_l，越大越敏感
-    err_curves  : (n_layers, n_bits)  ε_l(b)，按 bits_ladder 排列，随位宽单调下降
-    budget_ratio: 总预算 = ratio × Σ_l costs_l × max(bits_ladder)
-    layer_costs : 每层的预算权重（默认参数量；None 表示全 1）
-    min_bits    : 起始位宽，默认取 ladder 最小值
+    sensitivity : (n_layers,)  s_l, larger means more sensitive
+    err_curves  : (n_layers, n_bits)  eps_l(b), ordered as bits_ladder, decreasing
+                  monotonically with bit width
+    budget_ratio: total budget = ratio x Sum_l costs_l x max(bits_ladder)
+    layer_costs : budget weight per layer (parameter count by default; None means
+                  all ones)
+    min_bits    : starting bit width, defaults to the smallest ladder entry
     """
     s = np.asarray(sensitivity, dtype=np.float64).ravel()
     E = np.asarray(err_curves, dtype=np.float64)
     ladder = [int(b) for b in bits_ladder]
     n_l, n_b = E.shape
     if s.size != n_l:
-        raise ValueError(f"sensitivity 长度 {s.size} 与 err_curves 行数 {n_l} 不一致")
+        raise ValueError(f"sensitivity has length {s.size}; expected {n_l} rows")
     if n_b != len(ladder):
-        raise ValueError("err_curves 列数必须等于位宽阶梯长度")
+        raise ValueError("number of err_curves columns must equal bit-width ladder length")
 
-    # 敏感性可能是负的（量化反而"变好"，纯噪声）。截断到 0，
-    # 否则贪心会为了"最大化收益"去降低这些层的位宽，语义上说不通。
+    # the sensitivity can be negative (quantization even "helps", pure noise).
+    # Clip it at 0, otherwise the greedy search would lower the bit width of
+    # those layers in order to "maximise the gain", which makes no sense.
     s = np.clip(np.nan_to_num(s, nan=0.0), 0.0, None)
 
     costs = _resolve_costs(n_l, layer_costs)
@@ -173,13 +185,14 @@ def greedy_allocate(
     start_idx = 0
     if min_bits is not None:
         if int(min_bits) not in ladder:
-            raise ValueError(f"min_bits={min_bits} 不在位宽阶梯中")
+            raise ValueError(f"min_bits={min_bits} is not in the bit-width ladder")
         start_idx = ladder.index(int(min_bits))
 
     idx = np.full(n_l, start_idx, dtype=int)
     used = float(np.sum(costs * np.array([ladder[i] for i in idx], dtype=np.float64)))
 
-    # 若最小位宽都超预算，直接返回最小配置（并在 budget 上如实反映）
+    # if even the minimum bit width exceeds the budget, return the minimal
+    # configuration right away (and report the budget honestly)
     while True:
         best_l, best_gain, best_score = -1, 0.0, -np.inf
         for l in range(n_l):
@@ -209,36 +222,37 @@ def greedy_allocate(
 
 
 # --------------------------------------------------------------------------
-# 三臂对比
+# three-arm comparison
 # --------------------------------------------------------------------------
 @dataclass
 class EqualErrorArmResult:
-    """等重构误差臂的完整结果。"""
+    """The complete result of the equal-reconstruction-error arm."""
 
     layer_names: List[str]
     bits_ladder: List[int]
     budget_ratio: float
     budget_total: float
     uniform: Allocation
-    agnostic: Allocation       # 用源域 A 的敏感性
-    oracle: Allocation         # 用目标域 B 的敏感性（上界）
+    agnostic: Allocation       # uses the sensitivity of source domain A
+    oracle: Allocation         # uses the sensitivity of target domain B (upper bound)
     source_domain: str = ""
     target_domain: str = ""
 
-    # 两个关键差值（都用**目标域**敏感性算预测损伤）
+    # the two key differences (both evaluate the predicted damage with the
+    # **target-domain** sensitivity)
     @property
     def gain_from_sensitivity(self) -> float:
-        """uniform - agnostic：敏感性引导分配带来的收益（>0 说明有用）。"""
+        """uniform - agnostic: gain from sensitivity-guided allocation (>0 means it helps)."""
         return float(self.uniform.predicted_damage - self.agnostic.predicted_damage)
 
     @property
     def cost_of_domain_ignorance(self) -> float:
-        """agnostic - oracle：**不知道部署域的代价**（>=0）。"""
+        """agnostic - oracle: **the cost of not knowing the deployment domain** (>=0)."""
         return float(self.agnostic.predicted_damage - self.oracle.predicted_damage)
 
     @property
     def relative_cost_of_ignorance(self) -> float:
-        """相对代价：相对于 oracle 的损伤，多付出的比例。"""
+        """Relative cost: the extra damage paid, relative to the oracle's damage."""
         denom = abs(self.oracle.predicted_damage)
         if denom < 1e-12:
             return float("nan")
@@ -246,22 +260,26 @@ class EqualErrorArmResult:
 
     @property
     def ranking_flipped(self) -> bool:
-        """两份分配是否不同（排序是否真的改变了决策）。"""
+        """Whether the two allocations differ (whether the ranking changed the decision)."""
         return not np.array_equal(np.asarray(self.agnostic.bits), np.asarray(self.oracle.bits))
 
     def verdict(self) -> str:
         d = self.cost_of_domain_ignorance
         if not np.isfinite(d) or abs(d) < 1e-9:
-            return "域无关分配与域相关分配等价 —— 未发现'不知道部署域'的代价"
+            return ("domain-independent and domain-aware allocation are "
+                    "equivalent -- no cost of 'not knowing the deployment "
+                    "domain' was found")
         if not self.ranking_flipped:
             return (
-                "两份分配位宽相同 —— 排序虽变但未改变决策，"
-                "说明敏感性排序的变化在本次预算下不具实际影响"
+                "both allocations give the same bit widths -- the ranking "
+                "changed but not the decision, so the shift in the sensitivity "
+                "ranking has no practical effect under this budget"
             )
         return (
-            f"按源域敏感性分配比按目标域分配多付出 {d:.4g} 的预测损伤"
-            f"（相对 {self.relative_cost_of_ignorance:+.1%}）→ "
-            "**不存在域无关的最优比特分配**"
+            f"allocating by source-domain sensitivity pays {d:.4g} more "
+            f"predicted damage than allocating by target-domain sensitivity "
+            f"(relative {self.relative_cost_of_ignorance:+.1%}) -> "
+            "**no domain-independent optimal bit allocation exists**"
         )
 
     def to_rows(self) -> List[Dict[str, object]]:
@@ -290,10 +308,11 @@ def run_equal_error_arm(
     source_domain: str = "A",
     target_domain: str = "B",
 ) -> EqualErrorArmResult:
-    """跑完整的三臂实验。
+    """Run the complete three-arm experiment.
 
-    注意：预测损伤**统一用目标域敏感性**评估，因为我们要回答的是
-    "在部署域 B 上，这个分配好不好"。
+    Note that the predicted damage is always evaluated with the **target-domain**
+    sensitivity, because the question is "how good is this allocation on the
+    deployment domain B".
     """
     ladder = [int(b) for b in bits_ladder]
     n_l = np.asarray(err_curves).shape[0]
@@ -308,7 +327,8 @@ def run_equal_error_arm(
     orc = greedy_allocate(sens_target, err_curves, ladder, budget_ratio, layer_costs,
                           strategy="oracle_target")
 
-    # 统一用目标域敏感性重算损伤，保证三臂可比
+    # recompute the damage with the target-domain sensitivity throughout, so
+    # that the three arms are comparable
     for alloc in (uni, agn, orc):
         alloc.predicted_damage = predicted_damage(alloc.bits, sens_target, err_curves, ladder)
 

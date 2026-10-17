@@ -34,10 +34,10 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    """torch 侧的工具按需导入。
+    """Import the torch-side helpers on demand.
 
-    这样 ``import src.quant`` 在没有装 torch 的机器上（例如只跑
-    ``tests/test_quant_core.py``）也不会失败。
+    That way ``import src.quant`` also works on a machine without torch (for
+    example one that only runs ``tests/test_quant_core.py``).
     """
     if name in {"fake_quant_tensor", "quantizable_layers",
                 "quantize_model", "quantize_one_layer"}:

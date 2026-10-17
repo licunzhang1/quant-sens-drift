@@ -1,12 +1,15 @@
-"""分布偏移的构造与管理。
+"""Construction and management of distribution shifts.
 
-当前偏移的**参数**都在 ``configs/base.yaml`` 的 ``data.shifts`` 里，
-本模块负责把它们整理成可迭代的对象，并提供组合/强度缩放等便利操作。
+The current shift **parameters** all live under ``data.shifts`` in
+``configs/base.yaml``. This module turns them into iterable objects and offers
+convenience operations such as composition and intensity scaling.
 
-为什么偏移要配置化
-------------------
-本项目的核心问题是"域偏移如何影响量化敏感性"，所以**偏移是自变量**。
-它必须像超参一样被记录、可复现、可批量扫描 —— 不能写死在代码里。
+Why shifts are configurable
+---------------------------
+The core question of this project is "how does domain shift affect quantization
+sensitivity", so **the shift is the independent variable**. It has to be
+recorded, reproducible and batch-scannable like any hyperparameter -- it cannot
+be hard-coded.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ __all__ = ["ShiftSpec", "list_shifts", "build_shift", "scale_shift", "describe_a
 
 @dataclass(frozen=True)
 class ShiftSpec:
-    """一个具名偏移。"""
+    """A named shift."""
 
     name: str
     channel: ChannelConfig
@@ -43,7 +46,7 @@ def _infer_kind(cfg: Dict) -> str:
 
 
 def list_shifts(shifts_cfg: Optional[Dict]) -> List[ShiftSpec]:
-    """把配置里的 ``data.shifts`` 转成 ``ShiftSpec`` 列表。"""
+    """Turn ``data.shifts`` from the config into a list of ``ShiftSpec``."""
     out: List[ShiftSpec] = []
     for name, cfg in (shifts_cfg or {}).items():
         cfg = dict(cfg)
@@ -58,16 +61,18 @@ def build_shift(shifts_cfg: Optional[Dict], name: str) -> ShiftSpec:
         if s.name == name:
             return s
     avail = [s.name for s in list_shifts(shifts_cfg)]
-    raise KeyError(f"未知偏移 {name!r}；可用: {avail}")
+    raise KeyError(f"unknown shift {name!r}; available: {avail}")
 
 
 def scale_shift(spec: ShiftSpec, factor: float) -> ShiftSpec:
-    """按比例缩放偏移强度（用于"偏移强度连续变化"的扫描实验）。
+    """Scale the shift intensity proportionally (used for sweeps in which the
+    "shift intensity varies continuously").
 
-    只缩放非零的损伤项与 SNR 的**偏离量**，保持参考 SNR 不变。
+    Only the non-zero impairments and the **deviation** of the SNR are scaled;
+    the reference SNR is kept unchanged.
     """
     c = spec.channel
-    ref_snr = 14.0  # 参考点：偏离它多少，缩放后再加回去
+    ref_snr = 14.0  # reference point: scale the deviation away from it, then add it back
     lo = ref_snr + (c.snr_db[0] - ref_snr) * factor
     hi = ref_snr + (c.snr_db[1] - ref_snr) * factor
     new = ChannelConfig(
